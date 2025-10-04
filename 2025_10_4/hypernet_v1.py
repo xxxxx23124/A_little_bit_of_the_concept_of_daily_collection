@@ -131,48 +131,48 @@ def train_model(model, X, y, epochs=10000, lr=0.001):
     print("Training finished.")
     return model
 
+if __name__=='__main__':
+    # --- 5. 实例化和训练模型 ---
+    # 定义模型尺寸
+    INPUT_SIZE = 1
+    HIDDEN_SIZE = 64
+    OUTPUT_SIZE = 1
+    HYPER_HIDDEN_SIZE = 32  # 超网络隐藏层大小
 
-# --- 5. 实例化和训练模型 ---
-# 定义模型尺寸
-INPUT_SIZE = 1
-HIDDEN_SIZE = 64
-OUTPUT_SIZE = 1
-HYPER_HIDDEN_SIZE = 32  # 超网络隐藏层大小
+    # 训练标准模型
+    print("--- Training StaticNet ---")
+    static_model = StaticNet(INPUT_SIZE, HIDDEN_SIZE, OUTPUT_SIZE)
+    static_model = train_model(static_model, X_train, y_train)
 
-# 训练标准模型
-print("--- Training StaticNet ---")
-static_model = StaticNet(INPUT_SIZE, HIDDEN_SIZE, OUTPUT_SIZE)
-static_model = train_model(static_model, X_train, y_train)
+    # 训练超网络模型
+    print("\n--- Training HyperNet ---")
+    hyper_model = HyperNet(INPUT_SIZE, HIDDEN_SIZE, OUTPUT_SIZE, HYPER_HIDDEN_SIZE)
+    hyper_model = train_model(hyper_model, X_train, y_train)
 
-# 训练超网络模型
-print("\n--- Training HyperNet ---")
-hyper_model = HyperNet(INPUT_SIZE, HIDDEN_SIZE, OUTPUT_SIZE, HYPER_HIDDEN_SIZE)
-hyper_model = train_model(hyper_model, X_train, y_train)
+    # --- 6. 可视化结果 ---
+    static_model.eval()
+    hyper_model.eval()
 
-# --- 6. 可视化结果 ---
-static_model.eval()
-hyper_model.eval()
+    with torch.no_grad():
+        predicted_static = static_model(X_train)
+        predicted_hyper = hyper_model(X_train)
 
-with torch.no_grad():
-    predicted_static = static_model(X_train)
-    predicted_hyper = hyper_model(X_train)
+    plt.figure(figsize=(12, 6))
+    plt.title("Function Fitting Comparison")
+    plt.plot(X_train.numpy(), y_train.numpy(), 'ro', label='Original Data (noisy)', markersize=3)
+    plt.plot(X_train.numpy(), torch.sin(4 * X_train).numpy(), 'k-', label='True Function', linewidth=2)
+    plt.plot(X_train.numpy(), predicted_static.numpy(), 'b-', label='StaticNet Fit')
+    plt.plot(X_train.numpy(), predicted_hyper.numpy(), 'g--', label='HyperNet Fit')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
 
-plt.figure(figsize=(12, 6))
-plt.title("Function Fitting Comparison")
-plt.plot(X_train.numpy(), y_train.numpy(), 'ro', label='Original Data (noisy)', markersize=3)
-plt.plot(X_train.numpy(), torch.sin(4 * X_train).numpy(), 'k-', label='True Function', linewidth=2)
-plt.plot(X_train.numpy(), predicted_static.numpy(), 'b-', label='StaticNet Fit')
-plt.plot(X_train.numpy(), predicted_hyper.numpy(), 'g--', label='HyperNet Fit')
-plt.legend()
-plt.grid(True)
-plt.show()
+    # 比较两个模型的参数数量
+    static_params = sum(p.numel() for p in static_model.parameters() if p.requires_grad)
+    hyper_params = sum(p.numel() for p in hyper_model.parameters() if p.requires_grad)
+    print(f"StaticNet trainable parameters: {static_params}")
+    print(f"HyperNet trainable parameters: {hyper_params}")
 
-# 比较两个模型的参数数量
-static_params = sum(p.numel() for p in static_model.parameters() if p.requires_grad)
-hyper_params = sum(p.numel() for p in hyper_model.parameters() if p.requires_grad)
-print(f"StaticNet trainable parameters: {static_params}")
-print(f"HyperNet trainable parameters: {hyper_params}")
-
-main_net_params = (INPUT_SIZE * HIDDEN_SIZE + HIDDEN_SIZE) + (HIDDEN_SIZE * HIDDEN_SIZE + HIDDEN_SIZE) + (
-            HIDDEN_SIZE * OUTPUT_SIZE + OUTPUT_SIZE)
-print(f"MainNet would have {main_net_params} parameters if trained directly.")
+    main_net_params = (INPUT_SIZE * HIDDEN_SIZE + HIDDEN_SIZE) + (HIDDEN_SIZE * HIDDEN_SIZE + HIDDEN_SIZE) + (
+                HIDDEN_SIZE * OUTPUT_SIZE + OUTPUT_SIZE)
+    print(f"MainNet would have {main_net_params} parameters if trained directly.")

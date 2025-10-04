@@ -124,43 +124,44 @@ def train_model(model, X, y, epochs=10000, lr=0.001):
 # --- 5. 实例化和训练新模型 ---
 # 定义主网络结构
 # 1 -> 64 -> 64 -> 1
-MAINNET_LAYER_SIZES = [1, 64, 64, 1]
-HYPER_HIDDEN_DIM = 16  # 每个分层超网络的隐藏层大小
+if __name__=='__main__':
+    MAINNET_LAYER_SIZES = [1, 64, 64, 1]
+    HYPER_HIDDEN_DIM = 16  # 每个分层超网络的隐藏层大小
 
-print("\n--- Training HyperNetV2 ---")
-hyper_model_v2 = HyperNetV2(MAINNET_LAYER_SIZES, HYPER_HIDDEN_DIM)
-hyper_model_v2 = train_model(hyper_model_v2, X_train, y_train, epochs=15000, lr=0.0005)  # 稍微调整训练参数
+    print("\n--- Training HyperNetV2 ---")
+    hyper_model_v2 = HyperNetV2(MAINNET_LAYER_SIZES, HYPER_HIDDEN_DIM)
+    hyper_model_v2 = train_model(hyper_model_v2, X_train, y_train, epochs=15000, lr=0.0005)  # 稍微调整训练参数
 
-# --- 6. 可视化结果 ---
-hyper_model_v2.eval()
-# 加载之前训练的StaticNet用于对比
-# (如果你没有运行之前的代码，可以注释掉这部分)
-try:
-    static_model = torch.load("static_model.pth")
-    static_model.eval()
+    # --- 6. 可视化结果 ---
+    hyper_model_v2.eval()
+    # 加载之前训练的StaticNet用于对比
+    # (如果你没有运行之前的代码，可以注释掉这部分)
+    try:
+        static_model = torch.load("static_model.pth")
+        static_model.eval()
+        with torch.no_grad():
+            predicted_static = static_model(X_train)
+    except FileNotFoundError:
+        print("Static model not found, skipping comparison.")
+        predicted_static = None
+
     with torch.no_grad():
-        predicted_static = static_model(X_train)
-except FileNotFoundError:
-    print("Static model not found, skipping comparison.")
-    predicted_static = None
+        predicted_hyper_v2 = hyper_model_v2(X_train)
 
-with torch.no_grad():
-    predicted_hyper_v2 = hyper_model_v2(X_train)
+    plt.figure(figsize=(12, 6))
+    plt.title("Function Fitting Comparison (HyperNetV2)")
+    plt.plot(X_train.numpy(), y_train.numpy(), 'ro', label='Original Data (noisy)', markersize=3)
+    plt.plot(X_train.numpy(), torch.sin(4 * X_train).numpy(), 'k-', label='True Function', linewidth=2)
+    if predicted_static is not None:
+        plt.plot(X_train.numpy(), predicted_static.numpy(), 'b-', label='StaticNet Fit', alpha=0.5)
+    plt.plot(X_train.numpy(), predicted_hyper_v2.numpy(), 'g--', label='HyperNetV2 Fit', linewidth=2)
+    plt.legend()
+    plt.grid(True)
+    plt.show()
 
-plt.figure(figsize=(12, 6))
-plt.title("Function Fitting Comparison (HyperNetV2)")
-plt.plot(X_train.numpy(), y_train.numpy(), 'ro', label='Original Data (noisy)', markersize=3)
-plt.plot(X_train.numpy(), torch.sin(4 * X_train).numpy(), 'k-', label='True Function', linewidth=2)
-if predicted_static is not None:
-    plt.plot(X_train.numpy(), predicted_static.numpy(), 'b-', label='StaticNet Fit', alpha=0.5)
-plt.plot(X_train.numpy(), predicted_hyper_v2.numpy(), 'g--', label='HyperNetV2 Fit', linewidth=2)
-plt.legend()
-plt.grid(True)
-plt.show()
+    # (可选) 保存模型用于后续对比
+    # torch.save(static_model, "static_model.pth")
 
-# (可选) 保存模型用于后续对比
-# torch.save(static_model, "static_model.pth")
-
-# 参数量分析
-hyper_v2_params = sum(p.numel() for p in hyper_model_v2.parameters() if p.requires_grad)
-print(f"HyperNetV2 trainable parameters: {hyper_v2_params}")
+    # 参数量分析
+    hyper_v2_params = sum(p.numel() for p in hyper_model_v2.parameters() if p.requires_grad)
+    print(f"HyperNetV2 trainable parameters: {hyper_v2_params}")
