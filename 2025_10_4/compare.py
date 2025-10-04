@@ -15,8 +15,10 @@ except ImportError:
 
 # --- 1. 准备数据 (与之前相同) ---
 torch.manual_seed(42) # 设置随机种子以保证结果可复现
-key_points_num = 6000
-frequency = 32
+key_points_num = 200
+# key_points_num = 6000
+frequency = 4
+# frequency = 32
 X_train = torch.linspace(-np.pi, np.pi, key_points_num).unsqueeze(1)
 y_train = torch.sin(frequency * X_train) + torch.randn(key_points_num, 1) * 0.1 # 加入一些噪声
 
