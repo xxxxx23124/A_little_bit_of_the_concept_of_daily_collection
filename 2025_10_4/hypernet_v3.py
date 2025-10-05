@@ -243,7 +243,7 @@ def train_moe_model(model, X, y, epochs=10000, lr=0.001, alpha=0.01):
 
         # --- 计算负载均衡损失 ---
         total_load_balancing_loss = 0
-        num_layers_with_moe = len(model.hyper_layers)  # 假设所有层都是 MoE
+        num_layers_with_moe = len(model.hybrid_ffn_list)  # 假设所有层都是 MoE
 
         # 遍历所有 MoE 层的 gating_logits，并累加它们的负载均衡损失
         for gating_logits in gating_logits_list:
