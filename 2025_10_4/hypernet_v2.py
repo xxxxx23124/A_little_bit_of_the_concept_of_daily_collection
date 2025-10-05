@@ -9,23 +9,7 @@ X_train = torch.linspace(-np.pi, np.pi, 200).unsqueeze(1)
 y_train = torch.sin(4 * X_train) + torch.randn(200, 1) * 0.1
 
 
-# --- 2. 主网络 (与之前相同，无参数) ---
-class MainNet(nn.Module):
-    def __init__(self):
-        super(MainNet, self).__init__()
-        self.relu = nn.ReLU()
-
-    def forward(self, x, weights_list):
-        # weights_list 是一个包含各层权重字典的列表
-        out = x
-        for weights in weights_list:
-            # 手动实现全连接层操作
-            out = torch.matmul(out, weights['W']) + weights['b']
-            out = self.relu(out)
-        return out
-
-
-# --- 3. 定义高级超网络 (HyperNetV2) ---
+# --- 2. 定义高级超网络 (HyperNetV2) ---
 class LayerHyperNet(nn.Module):
     """为MainNet的单层生成权重的超网络"""
 
@@ -101,8 +85,15 @@ class HyperNetV2(nn.Module):
         return current_input
 
 
-# --- 4. 训练和评估函数 (与之前类似，但需要实例化新模型) ---
+# --- 3. 训练和评估函数 (与之前类似，但需要实例化新模型) ---
 def train_model(model, X, y, epochs=10000, lr=0.001):
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+
+    model.to(device)
+    X = X.to(device)
+    y = y.to(device)
+
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
@@ -121,7 +112,7 @@ def train_model(model, X, y, epochs=10000, lr=0.001):
     return model
 
 
-# --- 5. 实例化和训练新模型 ---
+# --- 4. 实例化和训练新模型 ---
 # 定义主网络结构
 # 1 -> 64 -> 64 -> 1
 if __name__=='__main__':
