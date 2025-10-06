@@ -4,11 +4,11 @@ import torch.optim as optim
 from einops import rearrange
 
 
-class LoRAHyperLayer(nn.Module):
+class LoRAHyperGenerator(nn.Module):
     """为MainNet的单层生成权重的超网络"""
 
     def __init__(self, input_dim, output_dim, hidden_dim, rank, ratio_dim):
-        super(LoRAHyperLayer, self).__init__()
+        super(LoRAHyperGenerator, self).__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.rank = rank
@@ -67,18 +67,20 @@ class LoRAHyperLayer(nn.Module):
         # 返回分解后的矩阵 A, B 和其他组件，而不是 W
         return {'A': A, 'B': B, 'b': b, 'ratio': dynamic_ratio}
 
-class HyperContent(nn.Module):
+class HybridLinear(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dim, rank, ratio_dim):
         super().__init__()
-        # 一个小型的 HyperLayer 动态生成精炼内容的参数
-        self.hyper_layer = LoRAHyperLayer(input_dim, output_dim, hidden_dim, rank, ratio_dim)
+
+        self.hyper_parameter = LoRAHyperGenerator(input_dim, output_dim, hidden_dim, rank, ratio_dim)
+        self.static_parameter = nn.Linear(input_dim, output_dim)
+
         self.sigmoid = nn.Sigmoid()
 
 
     def forward(self, x):
         # 为当前层动态生成分解后的权重矩阵 A, B
         # A: [b, in, r], B: [b, r, out], b: [b, 1, out], ratio: [b, 1, 1]
-        params = self.hyper_layer(x)
+        params = self.hyper_parameter(x)
         A = params['A']
         B = params['B']
         bias = params['b']
@@ -105,39 +107,43 @@ class HyperContent(nn.Module):
         y = delta_W_x_scaled + bias
 
         # 移除多余的维度
+        # (b, out)
         y = y.squeeze(1)
 
-        return self.sigmoid(y)
+        # Output = x @ W_static + (x @ A_dyn @ B_dyn) * ratio_dyn + bias_dyn
+        y = self.static_parameter(x) + y
+
+        return y
 
 class HybridSwiGLU(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dim, dynamic_dim, rank, ratio_dim):
         super().__init__()
-        # 1. 静态门控 (Static Gate)
-        self.static_gate = nn.Linear(input_dim, hidden_dim)
-
-        # 2. 动态内容 (Dynamic Content)
-        self.dynamic_up = HyperContent(input_dim, hidden_dim, dynamic_dim, rank, ratio_dim)
+        # 1. 混合门控 (Static Gate)
+        self.hybrid_gate = HybridLinear(input_dim, hidden_dim, dynamic_dim, rank, ratio_dim)
         self.swish = nn.SiLU()
 
-        # 3. 静态降维 (Static Down-projection)
-        self.static_down = nn.Linear(hidden_dim, output_dim) # 输出维度通常等于输入维度
+        # 2. 混合内容 (Dynamic Content)
+        self.hybrid_up = HybridLinear(input_dim, hidden_dim, dynamic_dim, rank, ratio_dim)
+
+        # 3. 混合降维 (Static Down-projection)
+        self.hybrid_down = HybridLinear(hidden_dim, output_dim, dynamic_dim, rank, ratio_dim)
 
     def forward(self, x):
-        # 静态门控
-        static_gate = self.static_gate(x)
+        # 混合门控
+        hybrid_gate = self.hybrid_gate(x)
 
-        # 动态内容
-        dynamic_content = self.dynamic_up(x)
-        gated_hidden = self.swish(static_gate) * dynamic_content
+        # 混合内容
+        hybrid_content = self.hybrid_up(x)
+        gated_hidden = self.swish(hybrid_gate) * hybrid_content
 
-        # 静态降维，整合信息并输出
-        output = self.static_down(gated_hidden)
+        # 混合降维，整合信息并输出
+        output = self.hybrid_down(gated_hidden)
 
         return output
 
-class HyperNetV5(nn.Module):
+class HyperNetV6(nn.Module):
     def __init__(self, layer_sizes, hidden_dim, dynamic_dim, rank, ratio_dim):
-        super(HyperNetV5, self).__init__()
+        super(HyperNetV6, self).__init__()
         self.layer_sizes = layer_sizes
 
         self.hybrid_ffn_list = nn.ModuleList()
@@ -203,7 +209,7 @@ if __name__=='__main__':
 
 
     print("\n--- Training HyperNetV2 ---")
-    hyper_model_v5 = HyperNetV5(MAINNET_LAYER_SIZES, HIDDEN_DIM, GATE_HIDDEN_DIM, RANK, RATIO_DIM)
+    hyper_model_v5 = HyperNetV6(MAINNET_LAYER_SIZES, HIDDEN_DIM, GATE_HIDDEN_DIM, RANK, RATIO_DIM)
     hyper_model_v5 = train_model(hyper_model_v5, X_train, y_train, epochs=15000, lr=0.0005)  # 稍微调整训练参数
 
     # --- 6. 可视化结果 ---
