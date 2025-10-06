@@ -57,22 +57,15 @@ class LoRAHyperLayer(nn.Module):
         # b_flat: [b, r*o] -> B: [b, r, o]
         B = rearrange(b_flat, 'b (r o) -> b r o', r=self.rank, o=self.output_dim)
 
-        # W: [b, i, o]
-        W = torch.bmm(A, B)
-
-        # --- 生成并应用动态 ratio ---
-        # ratio 的形状: [batch_size, 1]
-        dynamic_ratio = self.ratio_generator(compressed_feat)
-
-        # --- 将 ratio 应用到 W ---
-        # 为了让 W 的每个元素都被缩放，需要调整 ratio 的维度
-        # W: [b, i, o], dynamic_ratio: [b, 1] -> [b, 1, 1]
-        W_scaled = W * dynamic_ratio.unsqueeze(-1)
+        # 生成动态 ratio
+        # ratio 的形状: [batch_size, 1] -> [b, 1, 1] 用于广播
+        dynamic_ratio = self.ratio_generator(compressed_feat).unsqueeze(-1)
 
         # [batch_size, output_dim] -> [batch_size, 1, output_dim]
         b = self.bias_generator(compressed_feat).unsqueeze(1)
 
-        return {'W': W_scaled, 'b': b}
+        # 返回分解后的矩阵 A, B 和其他组件，而不是 W
+        return {'A': A, 'B': B, 'b': b, 'ratio': dynamic_ratio}
 
 class HyperGate(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dim, rank, ratio_dim):
@@ -83,19 +76,38 @@ class HyperGate(nn.Module):
 
 
     def forward(self, x):
-        # 为当前层动态生成权重
-        # 注意：这里的权重是带batch维度的，即为每个样本都生成了独立的权重
-        # W: [batch_size, in, out], b: [batch_size, 1, out]
-        weights = self.hyper_layer(x)
+        # 为当前层动态生成分解后的权重矩阵 A, B
+        # A: [b, in, r], B: [b, r, out], b: [b, 1, out], ratio: [b, 1, 1]
+        params = self.hyper_layer(x)
+        A = params['A']
+        B = params['B']
+        bias = params['b']
+        ratio = params['ratio']
 
-        # 使用生成的权重进行计算
-        # (b, 1, in) @ (b, in, out) -> (b, 1, out)
+        # --- 执行优化的矩阵乘法 ---
+        # 原始输入 x: [b, in] -> [b, 1, in]
+        x_unsqueezed = x.unsqueeze(1)
 
-        x = torch.bmm(x.unsqueeze(1), weights['W']) + weights['b']
+        # 步骤 1: (x @ A)
+        # (b, 1, in) @ (b, in, r) -> (b, 1, r)
+        tmp = torch.bmm(x_unsqueezed, A)
+
+        # 步骤 2: (tmp @ B)
+        # (b, 1, r) @ (b, r, out) -> (b, 1, out)
+        delta_W_x = torch.bmm(tmp, B)
+
+        # 应用动态 ratio
+        # (b, 1, out) * (b, 1, 1) -> (b, 1, out)
+        delta_W_x_scaled = delta_W_x * ratio
+
+        # 加上偏置
+        # (b, 1, out) + (b, 1, out) -> (b, 1, out)
+        y = delta_W_x_scaled + bias
+
         # 移除多余的维度
-        x = x.squeeze(1)
+        y = y.squeeze(1)
 
-        return self.sigmoid(x)
+        return self.sigmoid(y)
 
 class HybridSwiGLU(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dim, gate_dim, rank, ratio_dim):
