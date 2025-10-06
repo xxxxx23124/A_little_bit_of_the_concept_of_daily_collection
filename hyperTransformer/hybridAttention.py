@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from einops import rearrange
 from hyperTransformer.hyperLinear import HyperLinear
 
-class HyperSelfAttention(nn.Module):
+class HybridSelfAttention(nn.Module):
     def __init__(self, d_model, nheads, rank, dynamic_dim, ratio_dim):
         super().__init__()
         self.nheads = nheads
