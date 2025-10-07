@@ -6,7 +6,7 @@ from einops import rearrange
 class LoRAHyperParams(nn.Module):
     """为MainNet的单层生成权重的超网络"""
 
-    def __init__(self, input_dim, output_dim, dynamic_dim, rank, ratio_dim):
+    def __init__(self, input_dim, output_dim, dynamic_dim, rank):
         super(LoRAHyperParams, self).__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
@@ -34,11 +34,7 @@ class LoRAHyperParams(nn.Module):
         # alpha：一个固定的、标量超参数。
 
         # 一个非常小的网络，只输出一个标量
-        self.ratio_generator = nn.Sequential(
-            nn.Linear(dynamic_dim, ratio_dim), # 极小的中间层
-            nn.Tanh(),
-            nn.Linear(ratio_dim, 1)
-        )
+        self.ratio_generator = nn.Linear(dynamic_dim, 1)
 
     def forward(self, x):
         # 注意：这里的输入x是MainNet每一层的输入
@@ -66,11 +62,11 @@ class LoRAHyperParams(nn.Module):
         # 返回分解后的矩阵 A, B 和其他组件，而不是 W
         return {'A': A, 'B': B, 'b': b, 'ratio': dynamic_ratio}
 
-class HyperLinear(nn.Module):
-    def __init__(self, input_dim, output_dim, dynamic_dim, rank, ratio_dim):
+class HyperLoRALinear(nn.Module):
+    def __init__(self, input_dim, output_dim, dynamic_dim, rank):
         super().__init__()
         # 一个小型的 HyperLayer 动态生成精炼内容的参数
-        self.hyper_layer = LoRAHyperParams(input_dim, output_dim, dynamic_dim, rank, ratio_dim)
+        self.hyper_layer = LoRAHyperParams(input_dim, output_dim, dynamic_dim, rank)
 
     def forward(self, x):
         # 为当前层动态生成分解后的权重矩阵 A, B

@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 # 从之前的脚本中导入HyperNetV2模型
 # 确保 hypernet_v7.py 文件在同一个目录下
 try:
-    from hypernet_v5 import HyperNetV5, train_model
+    from hypernet_v7 import HyperNetV7, train_model
 except ImportError:
     print("错误：无法找到 'hypernet_v7.py' 文件。")
     exit()
@@ -102,32 +102,30 @@ if __name__=='__main__':
     # HyperNetV5 的尺寸
     MAINNET_LAYER_SIZES = [1, 64, 64, 1]
 
-    HIDDEN_DIM = 96
-    GATE_HIDDEN_DIM = 16
-    RANK = 12
-    RATIO_DIM = 10
+    HIDDEN_DIM = 81
+    GATE_HIDDEN_DIM = 17
     # 实例化 HyperNetV5
-    hyper_model_v5 = HyperNetV5(MAINNET_LAYER_SIZES, HIDDEN_DIM, GATE_HIDDEN_DIM, RANK, RATIO_DIM)
+    hyper_model_v7 = HyperNetV7(MAINNET_LAYER_SIZES, HIDDEN_DIM, GATE_HIDDEN_DIM)
 
     # StaticNetLarge 的尺寸，使其参数量与HyperNetV4接近
     # H_LARGE = 200
-    H_LARGE = 241
+    H_LARGE = 243
 
-    hyper_v5_params = sum(p.numel() for p in hyper_model_v5.parameters() if p.requires_grad)
+    hyper_v7_params = sum(p.numel() for p in hyper_model_v7.parameters() if p.requires_grad)
 
     # 实例化 StaticNetLarge
     static_model_large = StaticNetLarge(1, H_LARGE, H_LARGE, H_LARGE, 1)
     static_large_params = sum(p.numel() for p in static_model_large.parameters() if p.requires_grad)
 
     print("--- 模型参数量对比 ---")
-    print(f"HyperNetV5 Trainable Parameters:     {hyper_v5_params:,}")
+    print(f"HyperNetV7 Trainable Parameters:     {hyper_v7_params:,}")
     print(f"StaticNetLarge Trainable Parameters: {static_large_params:,}")
     print("-" * 30)
 
     # 3.2 训练 HyperNetV2
-    print("\n--- Training HyperNetV5 ---")
+    print("\n--- Training HyperNetV7 ---")
 
-    hyper_model_v5 = train_model(hyper_model_v5, X_train, y_train, epochs=30000, lr=0.0005)
+    hyper_model_v7 = train_model(hyper_model_v7, X_train, y_train, epochs=30000, lr=0.0005)
 
     # 3.3 训练 StaticNetLarge
     print("\n--- Training StaticNetLarge ---")
@@ -136,21 +134,21 @@ if __name__=='__main__':
 
 
     # --- 4. 可视化最终对比结果 ---
-    hyper_model_v5.eval()
+    hyper_model_v7.eval()
     static_model_large.eval()
 
     with torch.no_grad():
-        device = next(hyper_model_v5.parameters()).device  # 获取模型所在的设备
+        device = next(hyper_model_v7.parameters()).device  # 获取模型所在的设备
         X_train_gpu = X_train.to(device)
-        predicted_hyper_v4 = hyper_model_v5(X_train_gpu)
+        predicted_hyper_v4 = hyper_model_v7(X_train_gpu)
         predicted_static_large = static_model_large(X_train_gpu)
 
     plt.figure(figsize=(14, 7))
-    plt.title("Fair Comparison: HyperNetV5 vs. StaticNetLarge-ReLU")
+    plt.title("Fair Comparison: HyperNetV7 vs. StaticNetLarge-ReLU")
     plt.plot(X_train.numpy(), y_train.numpy(), 'ro', label='Original Data (noisy)', markersize=3, alpha=0.6)
     plt.plot(X_train.numpy(), y_true.numpy(), 'k-', label='True Function', linewidth=3)
     plt.plot(X_train.numpy(), predicted_static_large.cpu().numpy(), 'b-', label=f'StaticNetLarge-ReLU Fit ({static_large_params:,} params)', linewidth=2)
-    plt.plot(X_train.numpy(), predicted_hyper_v4.cpu().numpy(), 'g--', label=f'HyperNetV5 Fit ({hyper_v5_params:,} params)', linewidth=2)
+    plt.plot(X_train.numpy(), predicted_hyper_v4.cpu().numpy(), 'g--', label=f'HyperNetV7 Fit ({hyper_v7_params:,} params)', linewidth=2)
     plt.legend()
     plt.grid(True)
     plt.ylim(-1.5, 1.5) # 固定y轴范围，防止过拟合导致图像变形

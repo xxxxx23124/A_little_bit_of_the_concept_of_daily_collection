@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from hyperTransformer.hyperLinear import HyperLinear
+from hyperTransformer.hyperLoRALinear import HyperLoRALinear
 
 class HybridSwiGLU(nn.Module):
     def __init__(self, input_dim, output_dim, up_proj_dim, dynamic_dim, rank, ratio_dim):
@@ -10,7 +10,7 @@ class HybridSwiGLU(nn.Module):
         self.swish = nn.SiLU()
 
         # 2. 动态内容 (Dynamic Content)
-        self.dynamic_up = HyperLinear(input_dim, up_proj_dim, dynamic_dim, rank, ratio_dim)
+        self.dynamic_up = HyperLoRALinear(input_dim, up_proj_dim, dynamic_dim, rank, ratio_dim)
 
         # 3. 静态降维 (Static Down-projection)
         self.static_down = nn.Linear(up_proj_dim, output_dim) # 输出维度通常等于输入维度

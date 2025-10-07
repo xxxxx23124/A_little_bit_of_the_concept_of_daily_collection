@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 try:
     from hypernet_v5 import HyperNetV5, train_model
 except ImportError:
-    print("错误：无法找到 'hypernet_v5.py' 文件。")
+    print("错误：无法找到 'hypernet_v7.py' 文件。")
     exit()
 
 # --- 1. 准备数据 (与之前相同) ---

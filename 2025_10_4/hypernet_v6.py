@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from einops import rearrange
-
+from hyperTransformer.rmsNorm import RMSNorm
 
 class LoRAHyperGenerator(nn.Module):
     """为MainNet的单层生成权重的超网络"""
@@ -72,12 +72,15 @@ class HybridLinear(nn.Module):
         super().__init__()
 
         self.hyper_parameter = LoRAHyperGenerator(input_dim, output_dim, hidden_dim, rank, ratio_dim)
-        self.static_parameter = nn.Linear(input_dim, output_dim)
+        self.static_parameter = nn.Linear(input_dim, input_dim)
 
         self.sigmoid = nn.Sigmoid()
 
 
     def forward(self, x):
+
+        x = self.static_parameter(x)
+
         # 为当前层动态生成分解后的权重矩阵 A, B
         # A: [b, in, r], B: [b, r, out], b: [b, 1, out], ratio: [b, 1, 1]
         params = self.hyper_parameter(x)
@@ -110,9 +113,6 @@ class HybridLinear(nn.Module):
         # (b, out)
         y = y.squeeze(1)
 
-        # Output = x @ W_static + (x @ A_dyn @ B_dyn) * ratio_dyn + bias_dyn
-        y = self.static_parameter(x) + y
-
         return y
 
 class HybridSwiGLU(nn.Module):
@@ -128,7 +128,11 @@ class HybridSwiGLU(nn.Module):
         # 3. 混合降维 (Static Down-projection)
         self.hybrid_down = HybridLinear(hidden_dim, output_dim, dynamic_dim, rank, ratio_dim)
 
+        # 4. RMSNorm
+        self.rmsnorm = RMSNorm(input_dim)
+
     def forward(self, x):
+        x = self.rmsnorm(x)
         # 混合门控
         hybrid_gate = self.hybrid_gate(x)
 
