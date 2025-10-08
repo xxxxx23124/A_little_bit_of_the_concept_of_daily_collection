@@ -58,7 +58,7 @@ class BaseCrossAttention(nn.Module, ABC):
         """
         raise NotImplementedError
 
-    def forward(self, x, context, rotary_emb: RotaryEmbedding | None, kv_cache: KVCache | None):
+    def forward(self, x, context, kv_cache: KVCache | None):
         """
         通用的交叉注意力前向传播逻辑。
 
@@ -67,8 +67,6 @@ class BaseCrossAttention(nn.Module, ABC):
                               通常是解码器的输入。
             context (torch.Tensor): 键/值序列 (Key/Value)，形状为 (B, S_kv, D_kv)。
                                      通常是编码器的输出。
-            rotary_emb (RotaryEmbedding | None): 旋转位置编码模块。
-                                                 在交叉注意力中，通常只对 query 应用。
             kv_cache (KVCache | None): Key-Value 缓存。用于在推理时缓存 `context`
                                        的 K, V 投影，避免重复计算。
         """
@@ -78,14 +76,7 @@ class BaseCrossAttention(nn.Module, ABC):
         query = self.q_proj(x)
         query = rearrange(query, 'b s (h d) -> b h s d', h=self.nheads)
 
-        # 2. 应用旋转位置编码 (RoPE) 到 Query
-        # 注意：交叉注意力的 RoPE 通常只应用于 query，并且不考虑 past_len，
-        # 因为 query 序列通常是从头开始生成的（在每个解码步骤）。
-        # Key/Value 来自固定的 context，不应应用与 query 序列相关的相对位置编码。
-        if rotary_emb is not None:
-            query = rotary_emb(query, seq_len=S_q, past_len=0)
-
-        # 3. 计算 Key 和 Value
+        # 2. 计算 Key 和 Value
         # 如果提供了缓存且缓存非空，则直接从缓存获取 K, V
         if kv_cache is not None and len(kv_cache) > 0:
             key, value = kv_cache.get()
@@ -100,12 +91,12 @@ class BaseCrossAttention(nn.Module, ABC):
             if kv_cache is not None:
                 kv_cache.update(key, value)
 
-        # 4. 执行缩放点积注意力
+        # 3. 执行缩放点积注意力
         # is_causal=False，因为查询可以关注上下文中的任何位置。
         attn_output = F.scaled_dot_product_attention(
             query, key, value, is_causal=False
         )
 
-        # 5. 整理输出并应用输出投影
+        # 4. 整理输出并应用输出投影
         attn_output = rearrange(attn_output, 'b h s d -> b s (h d)')
         return self.out_proj(attn_output)
