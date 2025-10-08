@@ -6,10 +6,11 @@ import math
 
 class HyperMoMixLinear(nn.Module):
     """
+    内置了一个辅助损失（entropy loss）来鼓励专家使用多样性。
     先对专家的扁平化权重进行加权求和，然后执行一次Monarch矩阵乘法。
     """
 
-    def __init__(self, in_features, out_features, compressed_feature_dim, num_monarchs=2):
+    def __init__(self, in_features, out_features, compressed_feature_dim, num_monarchs, reg_strength=1e-2):
         super().__init__()
         n_in = math.isqrt(in_features)
         n_out = math.isqrt(out_features)
@@ -22,6 +23,8 @@ class HyperMoMixLinear(nn.Module):
         self.n_out = n_out
 
         self.num_monarchs = num_monarchs
+        self.reg_strength = reg_strength
+        self.auxiliary_losses = []
 
         self.in_features = in_features
         self.out_features = out_features
@@ -39,14 +42,20 @@ class HyperMoMixLinear(nn.Module):
         )
 
         # 混合器、缩放器和偏置生成器
-        self.mixer = nn.Linear(compressed_feature_dim, num_monarchs)
+        self.mixer = nn.Sequential(nn.Linear(compressed_feature_dim, compressed_feature_dim), nn.Tanh(), nn.Linear(compressed_feature_dim, num_monarchs))
         self.biasor = nn.Linear(compressed_feature_dim, out_features)
         self.ratio_gen = nn.Linear(compressed_feature_dim, 1)
+
+        self.module_name = f"{self.__class__.__name__}_{hex(id(self))}"
 
     def forward(self, x):
         # 1. 压缩特征
         # x: (b, ..., in_features)
         compressed_features = self.compressor(x)  # (b, ..., compressed_features_dim)
+        # 这确保了不会累积上一个batch的损失
+        self.auxiliary_losses = []
+        # 在这里应用鼓励多专家的正则化
+        self._apply_routing_regularization(compressed_features)
 
         # 2. 生成所有专家的扁平化权重
         # 每个 M1_flat_k 的形状: (b, ..., weight_size)
@@ -60,6 +69,10 @@ class HyperMoMixLinear(nn.Module):
         # 3. 获取混合系数
         coeffs = self.mixer(compressed_features)  # (b, ..., k)
         coeffs = torch.softmax(coeffs, dim=-1)
+
+        # 动态健康检查
+        # if self.num_monarchs > 1: # 只有在有多个专家时才需要检查
+        #     self._check_expert_health(coeffs)
 
         # 4. 加权融合权重
         # 'k' 是专家维度, '...' 代表批次和序列等任意维度, 'd' 是权重大小
@@ -79,6 +92,59 @@ class HyperMoMixLinear(nn.Module):
         y = y + bias
 
         return y
+
+    def _apply_routing_regularization(self, compressed_features):
+        """
+        计算并注册一个只作用于 mixer 的“负载均衡损失”。
+        """
+        if not (self.training and self.num_monarchs > 1 and self.reg_strength > 0):
+            return
+
+        # 获取批次大小
+        # compressed_features 的形状是 (b, ...), b是批次大小
+        # 我们用 .shape[0] 来安全地获取它
+        batch_size = compressed_features.shape[0]
+
+        # 1. 使用 .detach() 来切断与 compressor 的梯度连接
+        detached_features = compressed_features.detach()
+
+        # 2. 在分离的计算图上重新计算 mixer 的输出
+        logits = self.mixer(detached_features)
+        coeffs = torch.softmax(logits, dim=-1)
+
+        # 3. 计算负载均衡损失 (Load Balancing Loss)
+        # coeffs 的形状是 (b, ..., k)
+
+        # 计算每个专家在批次中的平均分配概率
+        # (b * ... * k) -> (k,)
+        # 这相当于论文中 f_i = (1/N) * sum(p(x)_i)
+        avg_expert_prob = torch.mean(coeffs, dim=tuple(range(coeffs.ndim - 1)))
+
+        # 计算每个专家在批次中的总路由次数（近似）
+        # (b * ... * k) -> (k,)
+        # 这相当于论文中 P_i = sum(h(p(x)_i))
+        # 在这里我们使用平均概率的平方和的变体，效果类似且稳定
+        # 目标是最小化 expert_load 的方差
+
+        # 原始论文的损失是：alpha * (P_i * f_i) 的内积
+        # P_i = sum(h(p(x))) h(x) is 1 if expert i is chosen
+        # f_i = (1/N) * sum(p(x)_i)
+        # 这里我们使用一个更现代、等效且实现简单的版本：
+        # 我们惩罚每个专家在整个批次中的（平均概率 * 总概率）
+
+        # 计算每个专家在批次中的总概率（负载）
+        # (b * ... * k) -> (k,)
+        expert_load = torch.sum(coeffs, dim=tuple(range(coeffs.ndim - 1)))
+
+        # 损失是 expert_load 和 avg_expert_prob 点积。
+        # 乘以 num_monarchs 是原始论文中的做法，以保持缩放不变
+        load_balancing_loss = self.num_monarchs * torch.sum(avg_expert_prob * expert_load)
+
+        # 进行归一化
+        normalized_loss = load_balancing_loss / batch_size
+
+        # 4. 注册损失
+        self.auxiliary_losses.append(normalized_loss * self.reg_strength)
 
     def forward_with_weights(self, x, M1_flat, M2_flat):
         """
@@ -106,6 +172,39 @@ class HyperMoMixLinear(nn.Module):
         # y: (b, ..., out_features)
         y = rearrange(x2_out, '... h w -> ... (h w)')
         return y
+
+    def _check_expert_health(self, coeffs, threshold=0.1):
+        """
+        一个简单的诊断函数，用于检查是否有专家的权重过低。
+        这是一个“暴力”的检查，会直接打印到控制台。
+        """
+        # 只在训练模式下检查，避免在推理时产生不必要的IO开销
+        if not self.training:
+            return
+
+        # 检查批次中是否有任何一个token的任何一个专家的权重低于阈值
+        if torch.any(coeffs < threshold):
+            # 找出权重低于阈值的专家索引
+            # (coeffs < threshold)会返回一个布尔张量，.nonzero()找到所有True的坐标
+            problematic_experts = (coeffs < threshold).nonzero(as_tuple=False)
+
+            # 为了避免信息刷屏，我们只打印第一个检测到的问题
+            first_problem = problematic_experts[0]
+
+            # 获取有问题的专家索引
+            expert_idx = first_problem[-1].item()
+
+            # 获取该专家在那个具体位置的权重值
+            problematic_value = coeffs[tuple(first_problem[:-1])][expert_idx].item()
+
+            # 打印警报
+            print(f"\n/!\\ --- EXPERT HEALTH WARNING --- /!\\")
+            print(f"  - Module: '{self.module_name}'")
+            print(f"  - Problem: Expert {expert_idx} has a dangerously low activation weight.")
+            print(f"  - Value: {problematic_value:.4f} (Threshold: {threshold})")
+            print(
+                f"  - All expert weights at this position: {[f'{c:.4f}' for c in coeffs[tuple(first_problem[:-1])].tolist()]}")
+            print(f"/!\\ ----------------------------- /!\\\n")
 
 
 if __name__ == '__main__':

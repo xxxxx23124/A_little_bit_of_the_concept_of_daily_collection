@@ -11,7 +11,7 @@ class HybridSwiGLU(nn.Module):
         self.static_gate = nn.Linear(input_dim, hidden_dim)
         self.swish = nn.SiLU()
         # 2. 动态内容 (Dynamic Content)
-        self.dynamic_up = HyperMoMixLinear(input_dim,hidden_dim,dynamic_dim)
+        self.dynamic_up = HyperMoMixLinear(input_dim,hidden_dim,dynamic_dim,2)
         self.sigmoid = nn.Sigmoid()
 
         # 3. 静态降维 (Static Down-projection)
@@ -66,14 +66,25 @@ def train_model(model, X, y, epochs=10000, lr=0.001):
 
     for epoch in range(epochs):
         outputs = model(X)
-        loss = criterion(outputs, y)
+        # 计算主任务损失
+        main_loss = criterion(outputs, y)
+        # 递归收集所有子模块的辅助损失
+        total_aux_loss = 0
+        # model.modules() 会递归地返回模型中的所有模块 (包括它自己)
+        for module in model.modules():
+            # 检查模块是否是我们想要收集损失的类型
+            if isinstance(module, HyperMoMixLinear):
+                # 累加这个模块在前向传播中记录的所有损失
+                total_aux_loss += sum(module.auxiliary_losses)
+        # 将主损失和辅助损失相加
+        loss = main_loss + total_aux_loss
 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
         if (epoch + 1) % 1000 == 0:
-            print(f'Model: {model.__class__.__name__}, Epoch [{epoch + 1}/{epochs}], Loss: {loss.item():.6f}')
+            print(f'Model: {model.__class__.__name__}, Epoch [{epoch + 1}/{epochs}], Loss: {main_loss.item():.6f}')
 
     print("Training finished.")
     return model
