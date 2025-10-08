@@ -15,17 +15,17 @@ class BaseCrossAttention(nn.Module, ABC):
     子类需要通过调用 super().__init__() 并实现 _init_projections 方法
     来定义具体的 Q, K, V 投影层。
     """
-    def __init__(self, d_model, nheads, **kwargs):
+    def __init__(self, d_model, num_heads, **kwargs):
         """
         初始化交叉注意力模块。
 
         Args:
             d_model (int): 模型的维度。
-            nheads (int): 注意力头的数量。
+            num_heads (int): 注意力头的数量。
             **kwargs: 传递给 _init_projections 的额外参数。
         """
         super().__init__()
-        self.nheads = nheads
+        self.nheads = num_heads
         self.d_model = d_model
         assert d_model % self.nheads == 0, "d_model must be divisible by nheads"
 

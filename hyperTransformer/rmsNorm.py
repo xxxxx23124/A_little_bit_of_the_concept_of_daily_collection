@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch import Tensor
 
 class RMSNorm(nn.Module):
     """
@@ -17,22 +16,16 @@ class RMSNorm(nn.Module):
         # 'weight' 是 RMSNorm 的可学习增益参数
         self.weight = nn.Parameter(torch.ones(dim))
 
-    def forward(self, x: Tensor, z: Tensor | None = None) -> Tensor:
+    def forward(self, x):
         """
         前向传播。
 
         Args:
             x (Tensor): 输入张量。
-            z (Optional[Tensor]): 可选的门控输入张量。如果提供，
-                                  会先执行 x = x * silu(z)。
 
         Returns:
             Tensor: 归一化后的输出张量。
         """
-        # 可选的门控机制
-        if z is not None:
-            # 使用官方的 SiLU 实现
-            x = x * F.silu(z)
 
         # 调用 PyTorch 内置的高效 RMSNorm
         # F.rms_norm 会处理归一化和乘以 weight 的所有操作

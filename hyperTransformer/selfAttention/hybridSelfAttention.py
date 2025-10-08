@@ -6,9 +6,9 @@ class HybridSelfAttention(BaseSelfAttention):
     """
     混合自注意力实现，Q 投影层使用 HyperMoMixLinear。
     """
-    def __init__(self, d_model, nheads, compressed_feature_dim, num_experts):
+    def __init__(self, d_model, num_heads, compressed_feature_dim, num_experts):
         # 将特定于此子类的参数传递给 _init_projections
-        super().__init__(d_model, nheads,
+        super().__init__(d_model, num_heads,
                          compressed_feature_dim=compressed_feature_dim,
                          num_experts=num_experts)
 

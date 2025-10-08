@@ -17,11 +17,11 @@ class BaseSelfAttention(nn.Module, ABC):
     来定义具体的 Q, K, V 投影层。
     """
 
-    def __init__(self, d_model, nheads, **kwargs):
+    def __init__(self, d_model, num_heads, **kwargs):
         super().__init__()
-        self.nheads = nheads
+        self.num_heads = num_heads
         self.d_model = d_model
-        assert d_model % self.nheads == 0, "d_model must be divisible by nheads"
+        assert d_model % self.num_heads == 0, "d_model must be divisible by nheads"
 
         # 初始化 Q, K, V 投影层为 None，由子类负责定义
         self.q_proj = None
@@ -49,7 +49,7 @@ class BaseSelfAttention(nn.Module, ABC):
         """
         raise NotImplementedError
 
-    def forward(self, x, rotary_emb:RotaryEmbedding|None, kv_cache:KVCache|None, use_causal_mask):
+    def forward(self, x, rotary_emb:RotaryEmbedding|None, kv_cache:KVCache|None, use_causal_mask:bool):
         """
         通用的前向传播逻辑。
 
@@ -68,9 +68,9 @@ class BaseSelfAttention(nn.Module, ABC):
 
         # 2. 重塑张量以适应多头注意力
         # (B, S, D) -> (B, nheads, S, head_dim)
-        query = rearrange(query, 'b s (h d) -> b h s d', h=self.nheads)
-        key = rearrange(key, 'b s (h d) -> b h s d', h=self.nheads)
-        value = rearrange(value, 'b s (h d) -> b h s d', h=self.nheads)
+        query = rearrange(query, 'b s (h d) -> b h s d', h=self.num_heads)
+        key = rearrange(key, 'b s (h d) -> b h s d', h=self.num_heads)
+        value = rearrange(value, 'b s (h d) -> b h s d', h=self.num_heads)
 
         # 3. 应用旋转位置编码 (RoPE)
         past_len = len(kv_cache) if kv_cache is not None else 0
