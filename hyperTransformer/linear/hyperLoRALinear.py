@@ -4,7 +4,7 @@ from einops import rearrange
 
 
 class LoRAHyperParams(nn.Module):
-    """为MainNet的单层生成权重的超网络"""
+    """为HyperLoRALinear生成权重的超网络"""
 
     def __init__(self, input_dim, output_dim, dynamic_dim, rank):
         super(LoRAHyperParams, self).__init__()

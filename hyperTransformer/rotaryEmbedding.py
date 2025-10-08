@@ -21,10 +21,10 @@ class RotaryEmbedding(nn.Module):
         x2 = x[..., x.shape[-1] // 2 :]
         return torch.cat((-x2, x1), dim=-1)  # shape: (..., dim)
 
-    def forward(self, x, seq_len, seq_len_offset=0):
+    def forward(self, x, seq_len, past_len=0):
         # x shape: (batch, n_heads, seq_len, d_k)
-        cos = self.freqs_cos[:, :, seq_len_offset: seq_len_offset + seq_len, :]  # shape: (1, 1, seq_len, d_k)
-        sin = self.freqs_sin[:, :, seq_len_offset: seq_len_offset + seq_len, :]  # shape: (1, 1, seq_len, d_k)
+        cos = self.freqs_cos[:, :, past_len: past_len + seq_len, :]  # shape: (1, 1, seq_len, d_k)
+        sin = self.freqs_sin[:, :, past_len: past_len + seq_len, :]  # shape: (1, 1, seq_len, d_k)
         # RoPE 旋转的数学等价实现
         # (x * cos) + (rotate_half(x) * sin)
         # 这等价于复数乘法 (x_r + i*x_i) * (cos + i*sin) 的实部和虚部
