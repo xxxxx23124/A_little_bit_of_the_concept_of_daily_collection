@@ -22,12 +22,12 @@ class KVCache:
         """
         # 如果缓存为空，直接将当前状态设为缓存
         if self.key_cache is None or self.value_cache is None:
-            self.key_cache = key_states
-            self.value_cache = value_states
+            self.key_cache = key_states.detach()
+            self.value_cache = value_states.detach()
         # 如果缓存已存在，则在序列长度维度（dim=2）上进行拼接
         else:
-            self.key_cache = torch.cat([self.key_cache, key_states], dim=2)
-            self.value_cache = torch.cat([self.value_cache, value_states], dim=2)
+            self.key_cache = torch.cat([self.key_cache, key_states.detach()], dim=2)
+            self.value_cache = torch.cat([self.value_cache, value_states.detach()], dim=2)
 
     def get(self) -> tuple[torch.Tensor, torch.Tensor]:
         """

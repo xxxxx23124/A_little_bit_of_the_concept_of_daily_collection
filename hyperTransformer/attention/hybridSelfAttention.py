@@ -1,17 +1,17 @@
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
-from hyperTransformer.hyperLoRALinear import HyperLoRALinear
+from hyperTransformer.linear.hyperMoMixLinear import HyperMoMixLinear
 
 class HybridSelfAttention(nn.Module):
-    def __init__(self, d_model, nheads, dynamic_dim, rank, ratio_dim):
+    def __init__(self, d_model, nheads, compressed_feature_dim):
         super().__init__()
         self.nheads = nheads
         assert d_model % self.nheads == 0, "d_model must be divisible by nheads"
 
-        self.static_Q = nn.Linear(d_model, d_model)
-        self.hyper_K = HyperLoRALinear(d_model, d_model, dynamic_dim, rank, ratio_dim)
-        self.hyper_V = HyperLoRALinear(d_model, d_model, dynamic_dim, rank, ratio_dim)
+        self.static_Q = HyperMoMixLinear(d_model, d_model, compressed_feature_dim, 2)
+        self.hyper_K = nn.Linear(d_model, d_model)
+        self.hyper_V = nn.Linear(d_model, d_model)
 
         self.out_proj = nn.Linear(d_model, d_model)
 
