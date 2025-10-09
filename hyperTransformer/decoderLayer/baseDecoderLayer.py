@@ -1,4 +1,4 @@
-import torch
+from torch import Tensor
 import torch.nn as nn
 from abc import ABC, abstractmethod
 
@@ -71,12 +71,13 @@ class BaseDecoderLayer(nn.Module, ABC):
         raise NotImplementedError
 
     def forward(self,
-                x: torch.Tensor,
-                context: torch.Tensor,
+                x: Tensor,
+                context: Tensor,
                 rotary_emb: RotaryEmbedding | None,
                 self_attn_kv_cache: KVCache | None,
-                cross_attn_kv_cache: KVCache | None
-                ) -> torch.Tensor:
+                cross_attn_kv_cache: KVCache | None,
+                padding_mask: Tensor | None = None
+                ) -> Tensor:
         """
         通用的前向传播逻辑，遵循 Pre-Norm 结构。
 
@@ -97,9 +98,9 @@ class BaseDecoderLayer(nn.Module, ABC):
         # 自注意力总是使用因果掩码
         self_attn_output = self.self_attention(
             x_norm1,
+            attention_mask=padding_mask,
             rotary_emb=rotary_emb,
             kv_cache=self_attn_kv_cache,
-            use_causal_mask=True  # 关键点：解码器自注意力必须使用因果掩码
         )
 
         x = residual_1 + self.dropout1(self_attn_output)

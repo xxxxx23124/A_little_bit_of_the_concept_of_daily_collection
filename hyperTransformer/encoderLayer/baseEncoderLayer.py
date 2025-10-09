@@ -1,3 +1,4 @@
+from torch import Tensor
 import torch.nn as nn
 from abc import ABC, abstractmethod
 
@@ -52,13 +53,13 @@ class BaseEncoderLayer(nn.Module, ABC):
         """
         raise NotImplementedError
 
-    def forward(self, x, rotary_emb:RotaryEmbedding|None):
+    def forward(self, x, padding_mask: Tensor | None = None):
         """
         通用的前向传播逻辑，遵循 Pre-Norm 结构。
 
         Args:
             x (torch.Tensor): 输入张量，形状为 (batch_size, seq_len, d_model)。
-            rotary_emb (RotaryEmbedding | None): 旋转位置编码模块。
+            padding_mask(torch.Tensor): 掩码
 
         Returns:
             torch.Tensor: 编码器层的输出，形状与输入 x 相同。
@@ -70,7 +71,7 @@ class BaseEncoderLayer(nn.Module, ABC):
 
         # 将归一化后的数据送入注意力层
         # 典型的Pre-Norm实现会将归一化的x_norm1传递给Q,K,V的计算。我们遵循这个标准实践。
-        attention_output = self.attention(x_norm1, rotary_emb, kv_cache=None, use_causal_mask=False)
+        attention_output = self.attention(x_norm1, attention_mask=padding_mask, rotary_emb=None, kv_cache=None)
 
         # 应用Dropout和残差连接
         x = residual_1 + self.dropout1(attention_output)
