@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 
 from hyperTransformer.rmsNorm import RMSNorm
 from hyperTransformer.rotaryEmbedding import RotaryEmbedding
-from hyperTransformer.kvCache import KVCache # 假设 KVCache 的类型定义
+from hyperTransformer.kvCache import KVCache
 
 
 class BaseDecoderLayer(nn.Module, ABC):

@@ -5,7 +5,6 @@ from einops import rearrange
 from abc import ABC, abstractmethod
 
 from hyperTransformer.kvCache import KVCache
-from hyperTransformer.rotaryEmbedding import RotaryEmbedding
 
 
 class BaseCrossAttention(nn.Module, ABC):
