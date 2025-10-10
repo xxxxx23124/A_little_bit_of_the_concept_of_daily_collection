@@ -1,22 +1,31 @@
 from hyperTransformer.decoderLayer.baseDecoderLayer import BaseDecoderLayer
 from hyperTransformer.ffn.hybridSwiGLU import HybridSwiGLU
-from hyperTransformer.selfAttention.hybridSelfAttention import HybridSelfAttention
 from hyperTransformer.selfAttention.staticSelfAttention import StaticSelfAttention
+from hyperTransformer.crossAttention.hybridCrossAttention import HybridCrossAttention
 import math
 
 
 class HalfHybridDecoderLayer(BaseDecoderLayer):
-    def __init__(self, d_model, num_heads, d_ff, dropout_rate=0.1, num_experts=2):
+    def __init__(self, d_model, num_heads, d_ff, dropout_rate, num_experts, **kwargs):
         # 将特定于此子类的参数通过 kwargs 传递给父类的 _init_sublayers
         super().__init__(d_model, dropout_rate,
                          num_heads=num_heads,
                          d_ff=d_ff,
                          num_experts=num_experts)
 
-    def _init_sublayers(self, d_model, num_heads, d_ff, num_experts):
-        """
-        实现父类的抽象方法，定义具体的 attention 和 ffn 模块。
-        """
+    def _init_sublayers(self, d_model, **kwargs):
+        # 0. 从 kwargs 中安全地提取参数
+        # .get() 方法比直接用 ['key'] 更安全，如果键不存在不会报错
+        num_heads = kwargs.get('num_heads')
+        d_ff = kwargs.get('d_ff')
+        num_experts = kwargs.get('num_experts')
+
+        # 检查必需的参数是否存在
+        if any(p is None for p in [num_heads, d_ff, num_experts]):
+            raise ValueError(
+                "HalfHybridDecoderLayer requires 'num_heads', 'd_ff', and 'num_experts' to be provided in kwargs."
+            )
+
         # 计算压缩特征维度
         compressed_feature_dim = math.isqrt(d_model)
 
@@ -27,11 +36,11 @@ class HalfHybridDecoderLayer(BaseDecoderLayer):
         )
 
         # 2. 初始化混合交叉注意力模块
-        self.cross_attention = HybridSelfAttention(
+        self.cross_attention = HybridCrossAttention(
             d_model,
             num_heads,
             compressed_feature_dim,
-            num_experts=num_experts
+            num_experts
         )
 
         # 3. 初始化混合SwiGLU前馈网络模块
@@ -39,5 +48,6 @@ class HalfHybridDecoderLayer(BaseDecoderLayer):
             d_model,
             d_model, # SwiGLU的输入和输出维度通常与d_model相同
             d_ff,
-            compressed_feature_dim
+            compressed_feature_dim,
+            num_experts
         )

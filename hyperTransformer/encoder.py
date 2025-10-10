@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-
+from torch import Tensor
 from hyperTransformer.rmsNorm import RMSNorm
 from hyperTransformer.rotaryEmbedding import RotaryEmbedding
 from hyperTransformer.encoderLayer.baseEncoderLayer import BaseEncoderLayer
@@ -61,7 +61,10 @@ class Encoder(nn.Module):
         # 它可以稳定下一模块（如解码器）的输入，有助于改善训练动态。
         self.norm = RMSNorm(d_model)
 
-    def forward(self, x: torch.Tensor, rotary_emb: RotaryEmbedding | None) -> torch.Tensor:
+    def forward(self,
+                x: torch.Tensor,
+                rotary_emb: RotaryEmbedding | None,
+                padding_mask: Tensor | None = None) -> torch.Tensor:
         """
         编码器堆栈的前向传播。
 
@@ -74,6 +77,8 @@ class Encoder(nn.Module):
                 旋转位置编码模块。这个对象将被原封不动地传递给堆栈中的
                 每一个层，由层内部的注意力模块决定如何使用它。
 
+            padding_mask (Tensor | None): padding 掩码
+
         Returns:
             torch.Tensor:
                 编码器的最终输出，形状与输入 x 相同。
@@ -81,9 +86,11 @@ class Encoder(nn.Module):
         # --- 1. 顺序通过层堆栈 ---
         # 简单地遍历 `self.layers` 中的每一个层模块，
         # 并将上一层的输出作为下一层的输入。
-        # 这种清晰的循环体现了深度神经网络中数据逐层流动的本质。
         for layer in self.layers:
-            x = layer(x, rotary_emb)
+            x = layer(x,
+                      rotary_emb=rotary_emb,
+                      padding_mask=padding_mask
+                      )
 
         # --- 2. 应用最终归一化 ---
         # 在通过所有层之后，将最终的输出通过归一化层。
