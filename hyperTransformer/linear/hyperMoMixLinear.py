@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from einops import rearrange
 import math
-
+from torch.utils.checkpoint import checkpoint
 
 class HyperMoMixLinear(nn.Module):
     """
@@ -10,7 +10,14 @@ class HyperMoMixLinear(nn.Module):
     先对专家的扁平化权重进行加权求和，然后执行一次Monarch矩阵乘法。
     """
 
-    def __init__(self, in_features, out_features, compressed_feature_dim, num_monarchs, reg_strength=1e-2):
+    def __init__(self,
+                 in_features,
+                 out_features,
+                 compressed_feature_dim,
+                 num_monarchs,
+                 reg_strength=1e-2,
+                 use_checkpointing:bool=True
+                 ):
         super().__init__()
         n_in = math.isqrt(in_features)
         n_out = math.isqrt(out_features)
@@ -31,7 +38,10 @@ class HyperMoMixLinear(nn.Module):
         self.compressed_feature_dim = compressed_feature_dim
 
         # 压缩输入特征的模块
-        self.compressor = nn.Sequential(nn.Linear(in_features, compressed_feature_dim), nn.Tanh())
+        self.compressor = nn.Sequential(
+            nn.Linear(in_features, compressed_feature_dim),
+            nn.SiLU()
+        )
 
         # 多个权重生成器
         self.M1_gens = nn.ModuleList(
@@ -42,14 +52,19 @@ class HyperMoMixLinear(nn.Module):
         )
 
         # 混合器、缩放器和偏置生成器
-        self.mixer = nn.Sequential(nn.Linear(compressed_feature_dim, compressed_feature_dim), nn.Tanh(), nn.Linear(compressed_feature_dim, num_monarchs))
+        self.mixer = nn.Sequential(
+            nn.Linear(compressed_feature_dim, compressed_feature_dim),
+            nn.SiLU(),
+            nn.Linear(compressed_feature_dim, num_monarchs)
+        )
         self.biasor = nn.Linear(compressed_feature_dim, out_features)
         self.ratio_gen = nn.Linear(compressed_feature_dim, 1)
 
+        self.use_checkpointing = use_checkpointing
         self.module_name = f"{self.__class__.__name__}_{hex(id(self))}"
 
     def forward(self, x):
-        # 1. 压缩特征
+        # 压缩特征
         # x: (b, ..., in_features)
         compressed_features = self.compressor(x)  # (b, ..., compressed_features_dim)
         # 这确保了不会累积上一个batch的损失
@@ -57,40 +72,74 @@ class HyperMoMixLinear(nn.Module):
         # 在这里应用鼓励多专家的正则化
         self._apply_routing_regularization(compressed_features)
 
+        if self.training and self.use_checkpointing:
+            # 对权重生成和融合部分进行 checkpoint
+            fused_M1_flat, fused_M2_flat = checkpoint(
+                self._generate_and_fuse_weights, compressed_features
+            )
+        else:
+            fused_M1_flat, fused_M2_flat = self._generate_and_fuse_weights(compressed_features)
+
+        # 使用融合后的权重进行一次 Monarch 计算
+        y = self.forward_with_weights(x, fused_M1_flat, fused_M2_flat)
+
+        # 缩放
+        ratio = self.ratio_gen(compressed_features)  # (b, ..., 1)
+        y = y * ratio
+
+        # 添加动态偏置
+        bias = self.biasor(compressed_features)  # (b, ..., out_features)
+        y = y + bias
+
+        return y
+
+    def _generate_and_fuse_weights(self, compressed_features):
+        """
+        这个辅助函数包含了最消耗激活值内存的部分。
+        我们将对它进行 checkpoint。
+        """
         # 2. 生成所有专家的扁平化权重
-        # 每个 M1_flat_k 的形状: (b, ..., weight_size)
         all_M1_flat = [gen(compressed_features) for gen in self.M1_gens]
         all_M2_flat = [gen(compressed_features) for gen in self.M2_gens]
 
-        # 堆叠权重: (k, b, ..., weight_size)
         stacked_M1_flat = torch.stack(all_M1_flat, dim=0)
         stacked_M2_flat = torch.stack(all_M2_flat, dim=0)
 
         # 3. 获取混合系数
-        coeffs = self.mixer(compressed_features)  # (b, ..., k)
+        coeffs = self.mixer(compressed_features)
         coeffs = torch.softmax(coeffs, dim=-1)
 
-        # 动态健康检查
-        # if self.num_monarchs > 1: # 只有在有多个专家时才需要检查
-        #     self._check_expert_health(coeffs)
-
         # 4. 加权融合权重
-        # 'k' 是专家维度, '...' 代表批次和序列等任意维度, 'd' 是权重大小
-        # fused_M1_flat: (b, ..., weight_size)
         fused_M1_flat = torch.einsum('k...d, ...k -> ...d', stacked_M1_flat, coeffs)
         fused_M2_flat = torch.einsum('k...d, ...k -> ...d', stacked_M2_flat, coeffs)
 
-        # 5. 使用融合后的权重进行一次 Monarch 计算
-        y = self.forward_with_weights(x, fused_M1_flat, fused_M2_flat)
+        return fused_M1_flat, fused_M2_flat
 
-        # 6. 缩放
-        ratio = self.ratio_gen(compressed_features)  # (b, ..., 1)
-        y = y * ratio
+    def forward_with_weights(self, x, M1_flat, M2_flat):
+        """
+        使用外部传入的扁平化权重进行计算。
+        这允许我们在混合专家模型中先融合权重，再进行计算，以提高效率。
+        """
+        # M1: (b, ..., n_in, n_in, n_out)
+        M1 = rearrange(M1_flat, '... (g i o) -> ... g i o', g=self.n_in, i=self.n_in, o=self.n_out)
+        # M2: (b, ..., n_out, n_in, n_out)
+        M2 = rearrange(M2_flat, '... (g i o) -> ... g i o', g=self.n_out, i=self.n_in, o=self.n_out)
 
-        # 7. 添加动态偏置
-        bias = self.biasor(compressed_features)  # (b, ..., out_features)
-        y = y + bias
+        # --- Stage 1: 应用 M1 ---
+        # x1_in: (b, ..., n_in, n_in)
+        x1_in = rearrange(x, '... (h w) -> ... h w', h=self.n_in, w=self.n_in)
+        # x1_out: (b, ..., n_in, n_out)
+        x1_out = torch.einsum('... gi, ... gio -> ... go', x1_in, M1)
 
+        # --- Stage 2: 应用 M2 (带置换) ---
+        # x2_in: (b, ..., n_out, n_in)
+        x2_in = rearrange(x1_out, '... g o -> ... o g')
+        # x2_out: (b, ..., n_out, n_out)
+        x2_out = torch.einsum('... gi, ... gio -> ... go', x2_in, M2)
+
+        # --- 逆置换并展平 ---
+        # y: (b, ..., out_features)
+        y = rearrange(x2_out, '... h w -> ... (h w)')
         return y
 
     def _apply_routing_regularization(self, compressed_features):
@@ -121,33 +170,6 @@ class HyperMoMixLinear(nn.Module):
         load_balancing_loss = self.num_monarchs * torch.sum(avg_expert_prob * avg_expert_gate)
 
         self.auxiliary_losses.append(load_balancing_loss * self.reg_strength)
-
-    def forward_with_weights(self, x, M1_flat, M2_flat):
-        """
-        使用外部传入的扁平化权重进行计算。
-        这允许我们在混合专家模型中先融合权重，再进行计算，以提高效率。
-        """
-        # M1: (b, ..., n_in, n_in, n_out)
-        M1 = rearrange(M1_flat, '... (g i o) -> ... g i o', g=self.n_in, i=self.n_in, o=self.n_out)
-        # M2: (b, ..., n_out, n_in, n_out)
-        M2 = rearrange(M2_flat, '... (g i o) -> ... g i o', g=self.n_out, i=self.n_in, o=self.n_out)
-
-        # --- Stage 1: 应用 M1 ---
-        # x1_in: (b, ..., n_in, n_in)
-        x1_in = rearrange(x, '... (h w) -> ... h w', h=self.n_in, w=self.n_in)
-        # x1_out: (b, ..., n_in, n_out)
-        x1_out = torch.einsum('... gi, ... gio -> ... go', x1_in, M1)
-
-        # --- Stage 2: 应用 M2 (带置换) ---
-        # x2_in: (b, ..., n_out, n_in)
-        x2_in = rearrange(x1_out, '... g o -> ... o g')
-        # x2_out: (b, ..., n_out, n_out)
-        x2_out = torch.einsum('... gi, ... gio -> ... go', x2_in, M2)
-
-        # --- 逆置换并展平 ---
-        # y: (b, ..., out_features)
-        y = rearrange(x2_out, '... h w -> ... (h w)')
-        return y
 
     def _check_expert_health(self, coeffs, threshold=0.1):
         """
