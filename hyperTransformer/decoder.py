@@ -88,7 +88,6 @@ class Decoder(nn.Module):
                 rotary_emb=rotary_emb,
                 self_attn_kv_cache=layer_kv_caches[0],
                 cross_attn_kv_cache=layer_kv_caches[1]
-
             )
 
         # --- 2. 应用最终归一化 ---

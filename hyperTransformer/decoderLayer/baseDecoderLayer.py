@@ -97,7 +97,7 @@ class BaseDecoderLayer(nn.Module, ABC):
 
         # 自注意力总是使用因果掩码
         self_attn_output = self.self_attention(
-            x_norm1,
+            x=x_norm1,
             attention_mask=padding_mask,
             rotary_emb=rotary_emb,
             kv_cache=self_attn_kv_cache,

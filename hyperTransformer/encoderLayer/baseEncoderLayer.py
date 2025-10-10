@@ -77,11 +77,12 @@ class BaseEncoderLayer(nn.Module, ABC):
 
         # 将归一化后的数据送入注意力层
         # 典型的Pre-Norm实现会将归一化的x_norm1传递给Q,K,V的计算。我们遵循这个标准实践。
-        attention_output = self.attention(x_norm1,
-                                          attention_mask=padding_mask,
-                                          rotary_emb=rotary_emb,
-                                          kv_cache=None
-                                          )
+        attention_output = self.attention(
+            x=x_norm1,
+            attention_mask=padding_mask,
+            rotary_emb=rotary_emb,
+            kv_cache=None
+        )
 
         # 应用Dropout和残差连接
         x = residual_1 + self.dropout1(attention_output)

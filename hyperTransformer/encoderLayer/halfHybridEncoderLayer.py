@@ -24,9 +24,18 @@ class HalfHybridEncoderLayer(BaseEncoderLayer):
             raise ValueError(
                 "HalfHybridEncoderLayer requires 'num_heads', 'd_ff', and 'num_experts' to be provided in kwargs."
             )
-
-        self.attention = StaticSelfAttention(d_model, num_heads)
+        # 1. 初始化混合自注意力模块
+        self.attention = StaticSelfAttention(
+            d_model=d_model,
+            num_heads=num_heads
+        )
         # 计算压缩特征维度
         compressed_feature_dim = math.isqrt(d_model)
-
-        self.ffn = HybridSwiGLU(d_model, d_model, d_ff, compressed_feature_dim, num_experts)
+        # 2. 初始化混合SwiGLU前馈网络模块
+        self.ffn = HybridSwiGLU(
+            input_dim=d_model,
+            output_dim=d_model,  # SwiGLU的输入和输出维度通常与d_model相同
+            up_proj_dim=d_ff,
+            compressed_feature_dim=compressed_feature_dim,
+            num_experts=num_experts
+        )

@@ -46,17 +46,17 @@ class HybridEncoderLayer(BaseEncoderLayer):
 
         # 1. 初始化混合自注意力模块
         self.attention = HybridSelfAttention(
-            d_model,
-            num_heads,
-            compressed_feature_dim,
-            num_experts
+            d_model=d_model,
+            num_heads=num_heads,
+            compressed_feature_dim=compressed_feature_dim,
+            num_experts=num_experts
         )
 
         # 2. 初始化混合SwiGLU前馈网络模块
         self.ffn = HybridSwiGLU(
-            d_model,
-            d_model, # SwiGLU的输入和输出维度通常与d_model相同
-            d_ff,
-            compressed_feature_dim,
-            num_experts
+            input_dim=d_model,
+            output_dim=d_model, # SwiGLU的输入和输出维度通常与d_model相同
+            up_proj_dim=d_ff,
+            compressed_feature_dim=compressed_feature_dim,
+            num_experts=num_experts
         )
