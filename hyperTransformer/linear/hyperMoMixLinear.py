@@ -100,51 +100,27 @@ class HyperMoMixLinear(nn.Module):
         if not (self.training and self.num_monarchs > 1 and self.reg_strength > 0):
             return
 
-        # 获取批次大小
-        # compressed_features 的形状是 (b, ...), b是批次大小
-        # 我们用 .shape[0] 来安全地获取它
-        batch_size = compressed_features.shape[0]
-
-        # 1. 使用 .detach() 来切断与 compressor 的梯度连接
+        # 使用 .detach() 来切断与 compressor 的梯度连接
         detached_features = compressed_features.detach()
 
-        # 2. 在分离的计算图上重新计算 mixer 的输出
+        # 在分离的计算图上重新计算 mixer 的输出
         logits = self.mixer(detached_features)
         coeffs = torch.softmax(logits, dim=-1)
 
-        # 3. 计算负载均衡损失 (Load Balancing Loss)
-        # coeffs 的形状是 (b, ..., k)
+        # 将所有非专家维度展平，得到 (N, k) 的形状，N是token总数
+        flat_coeffs = rearrange(coeffs, '... k -> (...) k')
 
-        # 计算每个专家在批次中的平均分配概率
-        # (b * ... * k) -> (k,)
-        # 这相当于论文中 f_i = (1/N) * sum(p(x)_i)
-        avg_expert_prob = torch.mean(coeffs, dim=tuple(range(coeffs.ndim - 1)))
+        # 计算每个专家在批次中处理的token的平均比例 (f_i)
+        avg_expert_prob = torch.mean(flat_coeffs, dim=0)
 
-        # 计算每个专家在批次中的总路由次数（近似）
-        # (b * ... * k) -> (k,)
-        # 这相当于论文中 P_i = sum(h(p(x)_i))
-        # 在这里我们使用平均概率的平方和的变体，效果类似且稳定
-        # 目标是最小化 expert_load 的方差
+        # 计算每个专家在其被路由到的token上的平均门控值 (P_i)
+        avg_expert_gate = torch.mean(flat_coeffs, dim=0)
 
-        # 原始论文的损失是：alpha * (P_i * f_i) 的内积
-        # P_i = sum(h(p(x))) h(x) is 1 if expert i is chosen
-        # f_i = (1/N) * sum(p(x)_i)
-        # 这里我们使用一个更现代、等效且实现简单的版本：
-        # 我们惩罚每个专家在整个批次中的（平均概率 * 总概率）
+        # 负载均衡损失是 f_i 和 P_i 的点积，乘以专家数量进行缩放
+        # 这是为了鼓励所有专家被均匀使用
+        load_balancing_loss = self.num_monarchs * torch.sum(avg_expert_prob * avg_expert_gate)
 
-        # 计算每个专家在批次中的总概率（负载）
-        # (b * ... * k) -> (k,)
-        expert_load = torch.sum(coeffs, dim=tuple(range(coeffs.ndim - 1)))
-
-        # 损失是 expert_load 和 avg_expert_prob 点积。
-        # 乘以 num_monarchs 是原始论文中的做法，以保持缩放不变
-        load_balancing_loss = self.num_monarchs * torch.sum(avg_expert_prob * expert_load)
-
-        # 进行归一化
-        normalized_loss = load_balancing_loss / batch_size
-
-        # 4. 注册损失
-        self.auxiliary_losses.append(normalized_loss * self.reg_strength)
+        self.auxiliary_losses.append(load_balancing_loss * self.reg_strength)
 
     def forward_with_weights(self, x, M1_flat, M2_flat):
         """
