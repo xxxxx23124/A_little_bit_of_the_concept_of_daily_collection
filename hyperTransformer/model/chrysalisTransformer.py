@@ -58,7 +58,9 @@ class ChrysalisTransformer(nn.Module):
         self.embedding_dropout = nn.Dropout(dropout_rate)
 
         # Rotary Positional Embedding (RoPE)
+        assert d_model % num_heads == 0, "d_model % num_heads must be 0"
         head_dim = d_model // num_heads
+        assert head_dim % 2 == 0, "Rotary Positional Embedding (RoPE)'s head_dim must be even"
         self.rotary_emb = RotaryEmbedding(base=rope_base, head_dim=head_dim, max_seq_len=max_seq_len)
 
         # --- 2. 主干：Chrysalis Encoder ---

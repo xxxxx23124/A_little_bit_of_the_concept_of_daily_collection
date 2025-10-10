@@ -4,6 +4,7 @@ import torch.nn as nn
 class RotaryEmbedding(nn.Module):
     def __init__(self, base, head_dim, max_seq_len):
         super().__init__()
+        assert head_dim % 2 == 0, "Rotary Positional Embedding (RoPE)'s head_dim must be even"
         # 计算逆频率
         inv_freq = 1.0 / (base ** (torch.arange(0, head_dim, 2, dtype=torch.float) / head_dim))
         t = torch.arange(max_seq_len, dtype=torch.float)
