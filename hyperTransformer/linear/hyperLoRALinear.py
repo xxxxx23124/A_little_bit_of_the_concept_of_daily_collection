@@ -6,21 +6,21 @@ from einops import rearrange
 class LoRAHyperParams(nn.Module):
     """为HyperLoRALinear生成权重的超网络"""
 
-    def __init__(self, input_dim, output_dim, dynamic_dim, rank):
+    def __init__(self, input_dim, output_dim, compressed_feature_dim, rank):
         super(LoRAHyperParams, self).__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.rank = rank
 
         # 阶段一：两个子网络用于压缩输入特征
-        self.compressor = nn.Sequential(nn.Linear(input_dim, dynamic_dim), nn.Tanh())
+        self.compressor = nn.Sequential(nn.Linear(input_dim, compressed_feature_dim), nn.Tanh())
 
         # 阶段二：使用两个独立的、职责单一的生成器
-        self.a_generator = nn.Linear(dynamic_dim, input_dim * rank)
-        self.b_generator = nn.Linear(dynamic_dim, rank * output_dim)
+        self.a_generator = nn.Linear(compressed_feature_dim, input_dim * rank)
+        self.b_generator = nn.Linear(compressed_feature_dim, rank * output_dim)
 
         # 第二个子网络从compressor的输出生成偏置b
-        self.bias_generator = nn.Linear(dynamic_dim, output_dim)
+        self.bias_generator = nn.Linear(compressed_feature_dim, output_dim)
 
         # --- 动态 ratio 生成器 ---
         # 标准 LoRA 对权重矩阵 W 的更新如下：
@@ -34,7 +34,7 @@ class LoRAHyperParams(nn.Module):
         # alpha：一个固定的、标量超参数。
 
         # 一个非常小的网络，只输出一个标量
-        self.ratio_generator = nn.Linear(dynamic_dim, 1)
+        self.ratio_generator = nn.Linear(compressed_feature_dim, 1)
 
     def forward(self, x):
         # 注意：这里的输入x是MainNet每一层的输入
@@ -63,10 +63,10 @@ class LoRAHyperParams(nn.Module):
         return {'A': A, 'B': B, 'b': b, 'ratio': dynamic_ratio}
 
 class HyperLoRALinear(nn.Module):
-    def __init__(self, input_dim, output_dim, dynamic_dim, rank):
+    def __init__(self, input_dim, output_dim, compressed_feature_dim, rank):
         super().__init__()
         # 一个小型的 HyperLayer 动态生成精炼内容的参数
-        self.hyper_layer = LoRAHyperParams(input_dim, output_dim, dynamic_dim, rank)
+        self.hyper_layer = LoRAHyperParams(input_dim, output_dim, compressed_feature_dim, rank)
 
     def forward(self, x):
         # 为当前层动态生成分解后的权重矩阵 A, B

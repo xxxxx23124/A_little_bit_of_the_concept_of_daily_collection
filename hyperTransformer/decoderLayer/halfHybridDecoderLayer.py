@@ -1,5 +1,5 @@
 from hyperTransformer.decoderLayer.baseDecoderLayer import BaseDecoderLayer
-from hyperTransformer.ffn.hybridSwiGLU import HybridSwiGLU
+from hyperTransformer.ffn.hybridMoMixSwiGLU import HybridMoMixSwiGLU
 from hyperTransformer.selfAttention.staticSelfAttention import StaticSelfAttention
 from hyperTransformer.crossAttention.hybridCrossAttention import HybridCrossAttention
 import math
@@ -44,7 +44,7 @@ class HalfHybridDecoderLayer(BaseDecoderLayer):
         )
 
         # 3. 初始化混合SwiGLU前馈网络模块
-        self.ffn = HybridSwiGLU(
+        self.ffn = HybridMoMixSwiGLU(
             input_dim=d_model,
             output_dim=d_model, # SwiGLU的输入和输出维度通常与d_model相同
             up_proj_dim=d_ff,
