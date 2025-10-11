@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torch.utils.checkpoint import checkpoint
 
 from hyperTransformer.rmsNorm import RMSNorm
 from hyperTransformer.rotaryEmbedding import RotaryEmbedding
@@ -35,6 +36,9 @@ class Decoder(nn.Module):
         """
         super().__init__()
 
+        # 从kwargs中获取use_checkpointing标志，默认为False
+        self.use_checkpointing = layer_kwargs.get('use_checkpointing', False)
+
         # --- 1. 动态层实例化 ---
         # 根据传入的“配方”列表，使用列表推导式创建每一层的实例。
         # 这种设计将架构的定义与实现分离，提高了代码的灵活性和可维护性。
@@ -54,7 +58,8 @@ class Decoder(nn.Module):
                 x: torch.Tensor,
                 context: torch.Tensor,
                 rotary_emb: RotaryEmbedding | None,
-                all_kv_caches: list[tuple[KVCache, KVCache]] | None = None
+                all_kv_caches: list[tuple[KVCache, KVCache]] | None = None,
+                padding_mask: torch.Tensor | None = None
                 ) -> torch.Tensor:
         """
         解码器堆栈的前向传播。
@@ -82,13 +87,28 @@ class Decoder(nn.Module):
             # 为当前层选择正确的KV缓存。如果 all_kv_caches 为 None，则传递 None。
             layer_kv_caches = all_kv_caches[i] if all_kv_caches is not None else None
 
-            x = layer(
-                x,
-                context=context,
-                rotary_emb=rotary_emb,
-                self_attn_kv_cache=layer_kv_caches[0],
-                cross_attn_kv_cache=layer_kv_caches[1]
-            )
+            if self.training and self.use_checkpointing:
+                # 使用 checkpoint
+                x = checkpoint(
+                    layer,
+                    x=x,
+                    context=context,
+                    rotary_emb=rotary_emb,
+                    self_attn_kv_cache=layer_kv_caches[0],
+                    cross_attn_kv_cache=layer_kv_caches[1],
+                    padding_mask=padding_mask,
+                    use_reentrant=False
+                )
+            else:
+                # 不使用 checkpoint（例如在推理时）
+                x = layer(
+                    x=x,
+                    context=context,
+                    rotary_emb=rotary_emb,
+                    self_attn_kv_cache=layer_kv_caches[0],
+                    cross_attn_kv_cache=layer_kv_caches[1],
+                    padding_mask=padding_mask
+                )
 
         # --- 2. 应用最终归一化 ---
         x = self.norm(x)

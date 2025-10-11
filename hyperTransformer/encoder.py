@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 from torch import Tensor
+from torch.utils.checkpoint import checkpoint
+
 from hyperTransformer.rmsNorm import RMSNorm
 from hyperTransformer.rotaryEmbedding import RotaryEmbedding
 from hyperTransformer.encoderLayer.baseEncoderLayer import BaseEncoderLayer
@@ -39,6 +41,9 @@ class Encoder(nn.Module):
                 如 n_heads, d_ff, dropout_rate 等。
         """
         super().__init__()
+
+        # 从kwargs中获取use_checkpointing标志，默认为False
+        self.use_checkpointing = layer_kwargs.get('use_checkpointing', False)
 
         # --- 1. 动态层实例化 ---
         # 使用列表推导式遍历 `layer_recipe`。
@@ -87,10 +92,22 @@ class Encoder(nn.Module):
         # 简单地遍历 `self.layers` 中的每一个层模块，
         # 并将上一层的输出作为下一层的输入。
         for layer in self.layers:
-            x = layer(x,
-                      rotary_emb=rotary_emb,
-                      padding_mask=padding_mask
-                      )
+            if self.training and self.use_checkpointing:
+                # 使用 checkpoint
+                x = checkpoint(
+                    layer,
+                    x=x,
+                    rotary_emb=rotary_emb,
+                    padding_mask=padding_mask,
+                    use_reentrant=False
+                )
+            else:
+                # 不使用 checkpoint（例如在推理时）
+                x = layer(
+                    x=x,
+                    rotary_emb=rotary_emb,
+                    padding_mask=padding_mask
+                )
 
         # --- 2. 应用最终归一化 ---
         # 在通过所有层之后，将最终的输出通过归一化层。

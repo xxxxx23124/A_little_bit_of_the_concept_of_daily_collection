@@ -16,7 +16,7 @@ class HyperMoMixLinear(nn.Module):
                  compressed_feature_dim,
                  num_monarchs,
                  reg_strength=1e-2,
-                 use_checkpointing:bool=True
+                 use_checkpointing:bool=False
                  ):
         super().__init__()
         n_in = math.isqrt(in_features)
@@ -45,10 +45,22 @@ class HyperMoMixLinear(nn.Module):
 
         # 多个权重生成器
         self.M1_gens = nn.ModuleList(
-            [nn.Linear(compressed_feature_dim, self.n_in * self.n_in * self.n_out) for _ in range(num_monarchs)]
+            [
+                nn.Sequential(
+                    nn.Linear(compressed_feature_dim, compressed_feature_dim),
+                    nn.SiLU(),
+                    nn.Linear(compressed_feature_dim, self.n_in * self.n_in * self.n_out)
+                ) for _ in range(num_monarchs)
+            ]
         )
         self.M2_gens = nn.ModuleList(
-            [nn.Linear(compressed_feature_dim, self.n_out * self.n_in * self.n_out) for _ in range(num_monarchs)]
+            [
+                nn.Sequential(
+                    nn.Linear(compressed_feature_dim, compressed_feature_dim),
+                    nn.SiLU(),
+                    nn.Linear(compressed_feature_dim, self.n_out * self.n_in * self.n_out)
+                ) for _ in range(num_monarchs)
+            ]
         )
 
         # 混合器、缩放器和偏置生成器
@@ -75,7 +87,7 @@ class HyperMoMixLinear(nn.Module):
         if self.training and self.use_checkpointing:
             # 对权重生成和融合部分进行 checkpoint
             fused_M1_flat, fused_M2_flat = checkpoint(
-                self._generate_and_fuse_weights, compressed_features
+                self._generate_and_fuse_weights, compressed_features, use_reentrant=False
             )
         else:
             fused_M1_flat, fused_M2_flat = self._generate_and_fuse_weights(compressed_features)

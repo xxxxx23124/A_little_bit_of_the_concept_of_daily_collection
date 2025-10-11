@@ -9,7 +9,7 @@ class HybridEncoderLayer(BaseEncoderLayer):
     一个具体的 Pre-Norm Transformer 编码器层实现。
     它使用 HybridSelfAttention 和 HybridSwiGLU 作为其子模块。
     """
-    def __init__(self, d_model, num_heads, d_ff, dropout_rate, num_experts, **kwargs):
+    def __init__(self, d_model, num_heads, d_ff, dropout_rate, compressed_feature_dim, num_experts, **kwargs):
         """
         Args:
             d_model (int): 模型的维度。
@@ -22,7 +22,10 @@ class HybridEncoderLayer(BaseEncoderLayer):
         super().__init__(d_model, dropout_rate,
                          num_heads=num_heads,
                          d_ff=d_ff,
-                         num_experts=num_experts)
+                         compressed_feature_dim=compressed_feature_dim,
+                         num_experts=num_experts,
+                         **kwargs
+                         )
 
     def _init_sublayers(self, d_model, **kwargs):
         """
@@ -34,22 +37,24 @@ class HybridEncoderLayer(BaseEncoderLayer):
         num_heads = kwargs.get('num_heads')
         d_ff = kwargs.get('d_ff')
         num_experts = kwargs.get('num_experts')
+        compressed_feature_dim = kwargs.get('compressed_feature_dim')
 
         # 检查必需的参数是否存在
-        if any(p is None for p in [num_heads, d_ff, num_experts]):
+        if any(p is None for p in [num_heads, d_ff, num_experts, compressed_feature_dim]):
             raise ValueError(
-                "HybridEncoderLayer requires 'num_heads', 'd_ff', and 'num_experts' to be provided in kwargs."
+                "HybridEncoderLayer requires 'num_heads', 'd_ff', 'compressed_feature_dim', and 'num_experts' to be provided in kwargs."
             )
 
-        # 计算压缩特征维度
-        compressed_feature_dim = math.isqrt(d_model)
+        # 从kwargs中获取use_checkpointing标志，默认为False
+        use_checkpointing = kwargs.get('use_checkpointing', False)
 
         # 1. 初始化混合自注意力模块
         self.attention = HybridSelfAttention(
             d_model=d_model,
             num_heads=num_heads,
             compressed_feature_dim=compressed_feature_dim,
-            num_experts=num_experts
+            num_experts=num_experts,
+            use_checkpointing=use_checkpointing
         )
 
         # 2. 初始化混合SwiGLU前馈网络模块
@@ -58,5 +63,6 @@ class HybridEncoderLayer(BaseEncoderLayer):
             output_dim=d_model, # SwiGLU的输入和输出维度通常与d_model相同
             up_proj_dim=d_ff,
             compressed_feature_dim=compressed_feature_dim,
-            num_experts=num_experts
+            num_experts=num_experts,
+            use_checkpointing=use_checkpointing
         )

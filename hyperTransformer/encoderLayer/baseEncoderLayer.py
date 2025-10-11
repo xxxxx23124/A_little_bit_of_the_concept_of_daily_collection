@@ -1,6 +1,7 @@
 from torch import Tensor
 import torch.nn as nn
 from abc import ABC, abstractmethod
+from torch.utils.checkpoint import checkpoint
 
 from hyperTransformer.rmsNorm import RMSNorm
 from hyperTransformer.rotaryEmbedding import RotaryEmbedding
@@ -24,6 +25,9 @@ class BaseEncoderLayer(nn.Module, ABC):
             **kwargs: 传递给 _init_sublayers 的额外参数。
         """
         super().__init__()
+
+        # 从kwargs中获取use_checkpointing标志，默认为False
+        self.use_checkpointing = kwargs.get('use_checkpointing', False)
 
         # 1. 定义两个子层块共有的模块
         self.norm1 = RMSNorm(d_model)
@@ -76,13 +80,24 @@ class BaseEncoderLayer(nn.Module, ABC):
         x_norm1 = self.norm1(x)
 
         # 将归一化后的数据送入注意力层
-        # 典型的Pre-Norm实现会将归一化的x_norm1传递给Q,K,V的计算。我们遵循这个标准实践。
-        attention_output = self.attention(
-            x=x_norm1,
-            attention_mask=padding_mask,
-            rotary_emb=rotary_emb,
-            kv_cache=None
-        )
+        # 典型的Pre-Norm实现会将归一化的x_norm1传递给Q,K,V的计算。
+        if self.training and self.use_checkpointing:
+
+            # 使用 checkpoint
+            attention_output = checkpoint(
+                self.attention,
+                x=x_norm1,
+                attention_mask=padding_mask,
+                rotary_emb=rotary_emb,
+                use_reentrant=False
+            )
+        else:
+            # 不使用 checkpoint（例如在推理时）
+            attention_output = self.attention(
+                x=x_norm1,
+                attention_mask=padding_mask,
+                rotary_emb=rotary_emb
+            )
 
         # 应用Dropout和残差连接
         x = residual_1 + self.dropout1(attention_output)
@@ -93,7 +108,16 @@ class BaseEncoderLayer(nn.Module, ABC):
         x_norm2 = self.norm2(x)
 
         # 将归一化后的数据送入FFN
-        ffn_output = self.ffn(x_norm2)
+        if self.training and self.use_checkpointing:
+            # 使用 checkpoint
+            ffn_output = checkpoint(
+                self.ffn,
+                x_norm2,
+                use_reentrant=False
+            )
+        else:
+            # 不使用 checkpoint
+            ffn_output = self.ffn(x_norm2)
 
         # 应用Dropout和残差连接
         x = residual_2 + self.dropout2(ffn_output)

@@ -1,8 +1,7 @@
 from torch import Tensor
 import torch.nn as nn
 from abc import ABC, abstractmethod
-
-
+from torch.utils.checkpoint import checkpoint
 
 from hyperTransformer.rmsNorm import RMSNorm
 from hyperTransformer.rotaryEmbedding import RotaryEmbedding
@@ -33,6 +32,9 @@ class BaseDecoderLayer(nn.Module, ABC):
             **kwargs: 传递给 _init_sublayers 的额外参数。
         """
         super().__init__()
+
+        # 从kwargs中获取use_checkpointing标志，默认为False
+        self.use_checkpointing = kwargs.get('use_checkpointing', False)
 
         # 1. 定义三个子层块共有的模块
         self.norm1 = RMSNorm(d_model)
@@ -87,6 +89,7 @@ class BaseDecoderLayer(nn.Module, ABC):
             rotary_emb (RotaryEmbedding | None): 旋转位置编码模块。
             self_attn_kv_cache (KVCache | None): 自注意力的KV缓存。
             cross_attn_kv_cache (KVCache | None): 交叉注意力的KV缓存。
+            padding_mask (Tensor | None): padding掩码，将多个不同长度的句子打包在一起。
 
         Returns:
             torch.Tensor: 解码器层的输出，形状与输入 x 相同。
@@ -96,12 +99,25 @@ class BaseDecoderLayer(nn.Module, ABC):
         x_norm1 = self.norm1(x)
 
         # 自注意力总是使用因果掩码
-        self_attn_output = self.self_attention(
-            x=x_norm1,
-            attention_mask=padding_mask,
-            rotary_emb=rotary_emb,
-            kv_cache=self_attn_kv_cache,
-        )
+        if self.training and self.use_checkpointing:
+
+            # 使用 checkpoint
+            self_attn_output = checkpoint(
+                self.self_attention,
+                x=x_norm1,
+                attention_mask=padding_mask,
+                rotary_emb=rotary_emb,
+                kv_cache=self_attn_kv_cache,
+                use_reentrant=False
+            )
+        else:
+            # 不使用 checkpoint（例如在推理时）
+            self_attn_output = self.self_attention(
+                x=x_norm1,
+                attention_mask=padding_mask,
+                rotary_emb=rotary_emb,
+                kv_cache=self_attn_kv_cache
+            )
 
         x = residual_1 + self.dropout1(self_attn_output)
 
@@ -110,11 +126,23 @@ class BaseDecoderLayer(nn.Module, ABC):
         x_norm2 = self.norm2(x)
 
         # 交叉注意力层，查询(Q)来自解码器，键(K)和值(V)来自编码器的输出(context)
-        cross_attn_output = self.cross_attention(
-            x=x_norm2,
-            context=context,
-            kv_cache=cross_attn_kv_cache
-        )
+        if self.training and self.use_checkpointing:
+
+            # 使用 checkpoint
+            cross_attn_output = checkpoint(
+                self.cross_attention,
+                x=x_norm2,
+                context=context,
+                kv_cache=cross_attn_kv_cache,
+                use_reentrant=False
+            )
+        else:
+            # 不使用 checkpoint（例如在推理时）
+            cross_attn_output = self.cross_attention(
+                x=x_norm2,
+                context=context,
+                kv_cache=cross_attn_kv_cache,
+            )
 
         x = residual_2 + self.dropout2(cross_attn_output)
 
@@ -122,7 +150,17 @@ class BaseDecoderLayer(nn.Module, ABC):
         residual_3 = x
         x_norm3 = self.norm3(x)
 
-        ffn_output = self.ffn(x_norm3)
+        # 将归一化后的数据送入FFN
+        if self.training and self.use_checkpointing:
+            # 使用 checkpoint
+            ffn_output = checkpoint(
+                self.ffn,
+                x_norm3,
+                use_reentrant=False
+            )
+        else:
+            # 不使用 checkpoint
+            ffn_output = self.ffn(x_norm3)
 
         x = residual_3 + self.dropout3(ffn_output)
 

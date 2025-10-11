@@ -27,6 +27,7 @@ class ChrysalisTransformer(nn.Module):
                  d_model: int,
                  num_heads: int,
                  d_ff: int,
+                 compressed_feature_dim:int,
                  num_experts: int = 4,
                  # --- 位置编码参数 ---
                  max_seq_len: int = 512,
@@ -34,6 +35,7 @@ class ChrysalisTransformer(nn.Module):
                  # --- 其他配置 ---
                  num_classes: int = 2,
                  dropout_rate: float = 0.1,
+                 use_checkpointing:bool = False
                  ):
         """
         Args:
@@ -42,11 +44,13 @@ class ChrysalisTransformer(nn.Module):
             d_model (int): 模型的维度 (必须是完全平方数)。
             num_heads (int): 注意力头的数量。
             d_ff (int): FFN的中间层维度 (最好是完全平方数)。
+            compressed_feature_dim(int): 动态生成参数的‘控制信号’的维度。
             num_experts (int): 混合专家模块中的专家数量。
             max_seq_len (int): 模型能处理的最大序列长度。
             rope_base (int): RoPE的基数。
             num_classes (int): 输出分类的数量 (例如, IMDb为2)。
             dropout_rate (float): Dropout比率。
+            use_checkpointing(bool): 是否使用checkpoint
         """
         super().__init__()
         assert num_layers > 1, "num_layers must be greater than 1 to use the specified recipe."
@@ -76,7 +80,9 @@ class ChrysalisTransformer(nn.Module):
             num_heads=num_heads,
             d_ff=d_ff,
             dropout_rate=dropout_rate,
-            num_experts=num_experts
+            compressed_feature_dim=compressed_feature_dim,
+            num_experts=num_experts,
+            use_checkpointing=use_checkpointing
         )
 
         # --- 3. 输出层 (Classification Head) ---
@@ -86,18 +92,6 @@ class ChrysalisTransformer(nn.Module):
         # --- 4. 保存配置 ---
         # 将关键配置保存下来，方便后续使用
         self.config = {k: v for k, v in locals().items() if k not in ['self', '__class__']}
-
-        # 初始化权重
-        self.apply(self._init_weights)
-
-    def _init_weights(self, module):
-        """初始化权重的函数"""
-        if isinstance(module, nn.Linear):
-            nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            if module.bias is not None:
-                nn.init.zeros_(module.bias)
-        elif isinstance(module, nn.Embedding):
-            nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(self,
                 input_ids: Tensor,
@@ -155,7 +149,8 @@ if __name__ == '__main__':
         'd_model': 64,  # 8*8
         'num_heads': 4,
         'd_ff': 256,  # 16*16
-        'num_experts': 4,
+        'compressed_feature_dim':32,
+        'num_experts': 3,
         'max_seq_len': 512,
         'num_classes': 2,
     }
@@ -192,22 +187,15 @@ if __name__ == '__main__':
     assert logits.shape == (batch_size, config['num_classes'])
     print("前向传播成功！输出形状正确。")
 
-    # 检查辅助损失 (在实际训练中需要收集)
-    # 在这个例子中，我们可以手动检查一下
-    aux_loss_found = False
+    # 检查辅助损失
+    """
+    total_aux_loss = 0
+    # model.modules() 会递归地返回模型中的所有模块 (包括它自己)
     for module in model.modules():
-        if hasattr(module, 'auxiliary_losses') and module.auxiliary_losses:
-            aux_loss_found = True
-            break
-    if not aux_loss_found:
-        print("\n注意：在单次前向传播后未找到辅助损失。请确保在训练循环中正确收集。")
-        print("这可能是因为在非训练模式下，正则化损失被关闭了。")
-        # 让我们在训练模式下再试一次
-        model.train()
-        _ = model(input_ids=dummy_input_ids, attention_mask=dummy_attention_mask)
-        aux_loss_found_train = False
-        for module in model.modules():
-            if hasattr(module, 'auxiliary_losses') and module.auxiliary_losses:
-                aux_loss_found_train = True
-                print("\n在训练模式下成功找到辅助损失！")
-                break
+        # 检查模块是否是我们想要收集损失的类型
+        if isinstance(module, HyperMoMixLinear):
+            # 累加这个模块在前向传播中记录的所有损失
+            total_aux_loss += sum(module.auxiliary_losses)
+    # 将主损失和辅助损失相加
+    loss = main_loss + total_aux_loss
+    """

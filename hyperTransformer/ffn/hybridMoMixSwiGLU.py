@@ -9,7 +9,7 @@ class HybridMoMixSwiGLU(BaseSwiGLU):
     - 内容上采样 (up_proj):  动态 (HyperMoMixLinear)
     - 降维投影 (down_proj):   静态 (nn.Linear)
     """
-    def __init__(self, input_dim, output_dim, up_proj_dim, compressed_feature_dim, num_experts):
+    def __init__(self, input_dim, output_dim, up_proj_dim, compressed_feature_dim, num_experts, **kwargs):
         """
         Args:
             input_dim (int): 输入维度。
@@ -24,13 +24,17 @@ class HybridMoMixSwiGLU(BaseSwiGLU):
             output_dim=output_dim,
             up_proj_dim=up_proj_dim,
             compressed_feature_dim=compressed_feature_dim,
-            num_experts=num_experts
+            num_experts=num_experts,
+            **kwargs
         )
 
     def _init_sublayers(self, input_dim, output_dim, up_proj_dim, **kwargs):
         """
         初始化具体的静态和动态层。
         """
+        # 从kwargs中获取use_checkpointing标志，默认为False
+        use_checkpointing = kwargs.get('use_checkpointing', False)
+
         # 从 kwargs 中安全地提取参数
         compressed_feature_dim = kwargs.get('compressed_feature_dim')
         num_experts = kwargs.get('num_experts')
@@ -49,7 +53,8 @@ class HybridMoMixSwiGLU(BaseSwiGLU):
             in_features=input_dim,
             out_features=up_proj_dim,
             compressed_feature_dim=compressed_feature_dim,
-            num_monarchs=num_experts
+            num_monarchs=num_experts,
+            use_checkpointing=use_checkpointing
         )
 
         # 3. 静态降维 (Static Down-projection)
