@@ -9,14 +9,14 @@ class HybridMoMixSwiGLU(BaseSwiGLU):
     - 内容上采样 (up_proj):  动态 (HyperMoMixLinear)
     - 降维投影 (down_proj):   静态 (nn.Linear)
     """
-    def __init__(self, input_dim, output_dim, up_proj_dim, compressed_feature_dim, num_experts, **kwargs):
+    def __init__(self, input_dim, output_dim, up_proj_dim, compressed_feature_dim, num_monarchs, **kwargs):
         """
         Args:
             input_dim (int): 输入维度。
             output_dim (int): 输出维度 (通常等于 input_dim)。
             up_proj_dim (int): 隐藏层的扩展维度。
             compressed_feature_dim (int): 动态层使用的压缩特征维度。
-            num_experts (int): 动态层使用的专家数量。
+            num_monarchs (int): 动态层使用的专家数量。
         """
         # 将所有参数传递给父类的构造函数，父类会再将它们传递给 _init_sublayers
         super().__init__(
@@ -24,7 +24,7 @@ class HybridMoMixSwiGLU(BaseSwiGLU):
             output_dim=output_dim,
             up_proj_dim=up_proj_dim,
             compressed_feature_dim=compressed_feature_dim,
-            num_experts=num_experts,
+            num_monarchs=num_monarchs,
             **kwargs
         )
 
@@ -37,12 +37,12 @@ class HybridMoMixSwiGLU(BaseSwiGLU):
 
         # 从 kwargs 中安全地提取参数
         compressed_feature_dim = kwargs.get('compressed_feature_dim')
-        num_experts = kwargs.get('num_experts')
+        num_monarchs = kwargs.get('num_monarchs')
 
         # 检查必需的参数是否存在
-        if any(p is None for p in [compressed_feature_dim, num_experts]):
+        if any(p is None for p in [compressed_feature_dim, num_monarchs]):
             raise ValueError(
-                "HybridMoMixSwiGLU requires 'compressed_feature_dim' and 'num_experts' to be provided in kwargs."
+                "HybridMoMixSwiGLU requires 'compressed_feature_dim' and 'num_monarchs' to be provided in kwargs."
             )
 
         # 1. 静态门控 (Static Gate)
@@ -53,7 +53,7 @@ class HybridMoMixSwiGLU(BaseSwiGLU):
             in_features=input_dim,
             out_features=up_proj_dim,
             compressed_feature_dim=compressed_feature_dim,
-            num_monarchs=num_experts,
+            num_monarchs=num_monarchs,
             use_checkpointing=use_checkpointing
         )
 

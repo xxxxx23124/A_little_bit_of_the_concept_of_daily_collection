@@ -28,7 +28,7 @@ class ChrysalisTransformer(nn.Module):
                  num_heads: int,
                  d_ff: int,
                  compressed_feature_dim:int,
-                 num_experts: int = 4,
+                 num_monarchs: int = 4,
                  # --- 位置编码参数 ---
                  max_seq_len: int = 512,
                  rope_base: int = 10000,
@@ -45,7 +45,7 @@ class ChrysalisTransformer(nn.Module):
             num_heads (int): 注意力头的数量。
             d_ff (int): FFN的中间层维度 (最好是完全平方数)。
             compressed_feature_dim(int): 动态生成参数的‘控制信号’的维度。
-            num_experts (int): 混合专家模块中的专家数量。
+            num_monarchs (int): 混合专家模块中的专家数量。
             max_seq_len (int): 模型能处理的最大序列长度。
             rope_base (int): RoPE的基数。
             num_classes (int): 输出分类的数量 (例如, IMDb为2)。
@@ -81,7 +81,7 @@ class ChrysalisTransformer(nn.Module):
             d_ff=d_ff,
             dropout_rate=dropout_rate,
             compressed_feature_dim=compressed_feature_dim,
-            num_experts=num_experts,
+            num_monarchs=num_monarchs,
             use_checkpointing=use_checkpointing
         )
 
@@ -150,7 +150,7 @@ if __name__ == '__main__':
         'num_heads': 4,
         'd_ff': 256,  # 16*16
         'compressed_feature_dim':32,
-        'num_experts': 3,
+        'num_monarchs': 3,
         'max_seq_len': 512,
         'num_classes': 2,
     }

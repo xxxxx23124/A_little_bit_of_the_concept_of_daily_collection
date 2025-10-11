@@ -6,13 +6,13 @@ import math
 
 
 class HalfHybridDecoderLayer(BaseDecoderLayer):
-    def __init__(self, d_model, num_heads, d_ff, dropout_rate, compressed_feature_dim, num_experts, **kwargs):
+    def __init__(self, d_model, num_heads, d_ff, dropout_rate, compressed_feature_dim, num_monarchs, **kwargs):
         # 将特定于此子类的参数通过 kwargs 传递给父类的 _init_sublayers
         super().__init__(d_model, dropout_rate,
                          num_heads=num_heads,
                          d_ff=d_ff,
                          compressed_feature_dim=compressed_feature_dim,
-                         num_experts=num_experts,
+                         num_monarchs=num_monarchs,
                          **kwargs
                          )
 
@@ -21,13 +21,13 @@ class HalfHybridDecoderLayer(BaseDecoderLayer):
         # .get() 方法比直接用 ['key'] 更安全，如果键不存在不会报错
         num_heads = kwargs.get('num_heads')
         d_ff = kwargs.get('d_ff')
-        num_experts = kwargs.get('num_experts')
+        num_monarchs = kwargs.get('num_monarchs')
         compressed_feature_dim=kwargs.get('compressed_feature_dim')
 
         # 检查必需的参数是否存在
-        if any(p is None for p in [num_heads, d_ff, num_experts, compressed_feature_dim]):
+        if any(p is None for p in [num_heads, d_ff, num_monarchs, compressed_feature_dim]):
             raise ValueError(
-                "HalfHybridDecoderLayer requires 'num_heads', 'd_ff', 'compressed_feature_dim', and 'num_experts' to be provided in kwargs."
+                "HalfHybridDecoderLayer requires 'num_heads', 'd_ff', 'compressed_feature_dim', and 'num_monarchs' to be provided in kwargs."
             )
 
         # 从kwargs中获取use_checkpointing标志，默认为False
@@ -44,7 +44,7 @@ class HalfHybridDecoderLayer(BaseDecoderLayer):
             d_model=d_model,
             num_heads=num_heads,
             compressed_feature_dim=compressed_feature_dim,
-            num_experts=num_experts,
+            num_monarchs=num_monarchs,
             use_checkpointing=use_checkpointing
         )
 
@@ -54,6 +54,6 @@ class HalfHybridDecoderLayer(BaseDecoderLayer):
             output_dim=d_model, # SwiGLU的输入和输出维度通常与d_model相同
             up_proj_dim=d_ff,
             compressed_feature_dim=compressed_feature_dim,
-            num_experts=num_experts,
+            num_monarchs=num_monarchs,
             use_checkpointing=use_checkpointing
         )

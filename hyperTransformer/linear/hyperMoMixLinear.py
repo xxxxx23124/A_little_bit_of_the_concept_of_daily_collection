@@ -77,8 +77,9 @@ class HyperMoMixLinear(nn.Module):
 
     def forward(self, x):
         # 压缩特征
-        # x: (b, ..., in_features)
-        compressed_features = self.compressor(x)  # (b, ..., compressed_features_dim)
+        # x: (b, ..., in_features) -> (b, ..., compressed_features_dim)
+        compressed_features = self.compressor(x.detach())  # 阻止超网络梯度回流到主干
+        # compressed_features = self.compressor(x) # 允许超网络梯度回流到主干
         # 这确保了不会累积上一个batch的损失
         self.auxiliary_losses = []
         # 在这里应用鼓励多专家的正则化
