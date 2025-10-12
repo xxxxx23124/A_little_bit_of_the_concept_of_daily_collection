@@ -78,13 +78,23 @@ def get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_st
         )
     return LambdaLR(optimizer, lr_lambda, last_epoch)
 
-def train(model, train_loader, optimizer, scheduler, criterion, device,
+
+def train(model, train_loader, optimizers, schedulers, criterion, device,
           accumulation_steps, max_grad_norm=1.0):
     model.train()
     total_loss = 0
     correct = 0
     total = 0
-    optimizer.zero_grad()
+
+    # 从字典中获取优化器和调度器
+    main_optimizer = optimizers['main']
+    hyper_optimizer = optimizers['hyper']
+    main_scheduler = schedulers['main']
+    hyper_scheduler = schedulers['hyper']
+
+    # 在每个 epoch 开始时重置梯度
+    main_optimizer.zero_grad()
+    hyper_optimizer.zero_grad()
 
     for batch_idx, batch in enumerate(tqdm(train_loader, desc="Training")):
         input_ids = batch['input_ids'].to(device)
@@ -94,37 +104,72 @@ def train(model, train_loader, optimizer, scheduler, criterion, device,
         logits = model(input_ids, attention_mask)
         loss = criterion(logits, labels)
 
-        total_aux_loss = sum(sum(module.auxiliary_losses) for module in model.modules() if isinstance(module, HyperMoMixLinear))
-        loss += total_aux_loss
-        loss = loss / accumulation_steps
-        loss.backward()
+        total_aux_loss = 0
+        for module in model.modules():
+            if isinstance(module, HyperMoMixLinear):
+                total_aux_loss += sum(module.auxiliary_losses)
+                module.clear_auxiliary_losses()
 
-        total_loss += loss.item() * accumulation_steps  # 还原真实损失用于统计
+        # 将主损失和辅助损失相加
+        total_batch_loss = loss + total_aux_loss
+
+        # 梯度累积
+        total_batch_loss = total_batch_loss / accumulation_steps
+        total_batch_loss.backward()
+
+        total_loss += total_batch_loss.item() * accumulation_steps  # 还原真实损失用于统计
         _, predicted = torch.max(logits, 1)
         correct += (predicted == labels).sum().item()
         total += labels.size(0)
 
         if (batch_idx + 1) % accumulation_steps == 0:
-            clip_grad_norm_(model.parameters(), max_norm=max_grad_norm)
-            optimizer.step()
-            scheduler.step()
-            optimizer.zero_grad()
+            # 分别对主干和超网络参数进行梯度裁剪
+            main_params = [p for name, p in model.named_parameters() if 'HyperMoMixLinear' not in name and p.requires_grad]
+            hyper_params = [p for name, p in model.named_parameters() if 'HyperMoMixLinear' in name and p.requires_grad]
+
+            clip_grad_norm_(main_params, max_norm=max_grad_norm)
+            clip_grad_norm_(hyper_params, max_norm=max_grad_norm)
+
+            # 更新两个优化器
+            main_optimizer.step()
+            hyper_optimizer.step()
+
+            # 更新两个调度器
+            main_scheduler.step()
+            hyper_scheduler.step()
+
+            # 重置梯度
+            main_optimizer.zero_grad()
+            hyper_optimizer.zero_grad()
 
         # 动态输出
         if (batch_idx + 1) % 100 == 0:
             running_loss = total_loss / (batch_idx + 1)
             running_acc = correct / total
-            print(f"Batch {batch_idx + 1}/{len(train_loader)} | Loss: {running_loss:.4f} | Acc: {running_acc:.4f} | LR: {scheduler.get_last_lr()[0]:.6f}")
+            # 打印两个优化器的学习率
+            print(f"Batch {batch_idx + 1}/{len(train_loader)} | "
+                  f"Loss: {running_loss:.6f} | Acc: {running_acc:.4f} | "
+                  f"Main LR: {main_scheduler.get_last_lr()[0]:.8f} | "
+                  f"Hyper LR: {hyper_scheduler.get_last_lr()[0]:.8f}")
 
+    # 处理 epoch 结束时剩余的未更新的梯度
     if len(train_loader) % accumulation_steps != 0:
-        clip_grad_norm_(model.parameters(), max_norm=max_grad_norm)
-        optimizer.step()
-        scheduler.step()
-        optimizer.zero_grad()
+        main_params = [p for name, p in model.named_parameters() if 'HyperMoMixLinear' not in name and p.requires_grad]
+        hyper_params = [p for name, p in model.named_parameters() if 'HyperMoMixLinear' in name and p.requires_grad]
+        clip_grad_norm_(main_params, max_norm=max_grad_norm)
+        clip_grad_norm_(hyper_params, max_norm=max_grad_norm)
+
+        main_optimizer.step()
+        hyper_optimizer.step()
+        main_scheduler.step()
+        hyper_scheduler.step()
+        main_optimizer.zero_grad()
+        hyper_optimizer.zero_grad()
 
     avg_loss = total_loss / len(train_loader)
     avg_acc = correct / total
     return avg_loss, avg_acc
+
 
 def evaluate(model, test_loader, criterion, device):
     model.eval()
@@ -144,6 +189,7 @@ def evaluate(model, test_loader, criterion, device):
             total += labels.size(0)
     return total_loss / len(test_loader), correct / total
 
+
 if __name__ == '__main__':
     config = {
         'vocab_size': 20000,
@@ -155,9 +201,14 @@ if __name__ == '__main__':
         'num_monarchs': 2,
         'max_seq_len': 512,
         'num_classes': 2,
+        'dropout_rate': 0.0,
         'use_checkpointing': False
     }
     accumulation_steps = 2
+
+    # --- 学习率配置 ---
+    main_lr = 1e-4  # 主干网络学习率
+    hyper_lr = 1e-4  # 超网络学习率
 
     print("加载IMDb数据集...")
     dataset = load_dataset("imdb")
@@ -184,22 +235,58 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    print("创建分离的优化器...")
+    # 1. 识别出所有 HyperMoMixLinear 模块的参数名称
+    hyper_param_names = set()
+    for module_name, module in model.named_modules():
+        if isinstance(module, HyperMoMixLinear):
+            # 将该模块下的所有参数的完整名称添加到集合中
+            for param_name, _ in module.named_parameters():
+                full_param_name = f"{module_name}.{param_name}"
+                hyper_param_names.add(full_param_name)
+
+    # 2. 根据名称分离参数
+    main_params = []
+    hyper_params = []
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+
+        if name in hyper_param_names:
+            hyper_params.append(param)
+        else:
+            main_params.append(param)
+
+    print(f"主干参数组数量: {len(main_params)}")
+    print(f"超网络参数组数量: {len(hyper_params)}")
+
+    # 2. 创建两个 Adam 优化器
+    main_optimizer = optim.Adam(main_params, lr=main_lr)
+    hyper_optimizer = optim.Adam(hyper_params, lr=hyper_lr)
+
+    optimizers = {'main': main_optimizer, 'hyper': hyper_optimizer}
+
     criterion = nn.CrossEntropyLoss()
 
-    # Warmup scheduler
+    # --- 关键改动：为两个优化器创建学习率调度器 ---
     num_epochs = 10
-    steps_per_epoch = math.ceil(len(train_loader) / accumulation_steps)  # 每个 epoch 的实际 step 数
+    steps_per_epoch = math.ceil(len(train_loader) / accumulation_steps)
     num_training_steps = num_epochs * steps_per_epoch
-    num_warmup_steps = int(0.1 * num_training_steps)  # 10% warmup
-    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps)
+    num_warmup_steps = int(0.1 * num_training_steps)
+
+    main_scheduler = get_linear_schedule_with_warmup(main_optimizer, num_warmup_steps, num_training_steps)
+    hyper_scheduler = get_linear_schedule_with_warmup(hyper_optimizer, num_warmup_steps, num_training_steps)
+
+    schedulers = {'main': main_scheduler, 'hyper': hyper_scheduler}
 
     for epoch in range(num_epochs):
         print(f"\nEpoch {epoch + 1}/{num_epochs}")
-        train_loss, train_acc = train(model, train_loader, optimizer, scheduler, criterion, device, accumulation_steps)
+        # 将优化器和调度器字典传入 train 函数
+        train_loss, train_acc = train(model, train_loader, optimizers, schedulers, criterion, device,
+                                      accumulation_steps)
         print(f"Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}")
 
-        test_loss, test_acc = evaluate(model, test_loader, criterion, device)
-        print(f"Test Loss: {test_loss:.4f}, Test Acc: {test_acc:.4f}")
+        # test_loss, test_acc = evaluate(model, test_loader, criterion, device)
+        # print(f"Test Loss: {test_loss:.4f}, Test Acc: {test_acc:.4f}")
 
     print("训练完成！")

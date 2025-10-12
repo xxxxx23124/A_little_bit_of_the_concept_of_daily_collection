@@ -75,6 +75,7 @@ def train_model(model, X, y, epochs=10000, lr=0.001):
             if isinstance(module, HyperMoMixLinear):
                 # 累加这个模块在前向传播中记录的所有损失
                 total_aux_loss += sum(module.auxiliary_losses)
+                module.clear_auxiliary_losses()
         # 将主损失和辅助损失相加
         loss = main_loss + total_aux_loss
 

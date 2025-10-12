@@ -24,7 +24,7 @@ class BaseDecoderLayer(nn.Module, ABC):
     来定义具体的自注意力、交叉注意力和 FFN 模块。
     """
 
-    def __init__(self, d_model, dropout_rate=0.1, **kwargs):
+    def __init__(self, d_model, dropout_rate, **kwargs):
         """
         Args:
             d_model (int): 模型的维度。

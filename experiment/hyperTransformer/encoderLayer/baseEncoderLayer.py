@@ -17,7 +17,7 @@ class BaseEncoderLayer(nn.Module, ABC):
     子类需要通过调用 super().__init__() 并实现 _init_sublayers 方法
     来定义具体的 self-attention 和 FFN 模块。
     """
-    def __init__(self, d_model, dropout_rate=0.1, **kwargs):
+    def __init__(self, d_model, dropout_rate, **kwargs):
         """
         Args:
             d_model (int): 模型的维度。
