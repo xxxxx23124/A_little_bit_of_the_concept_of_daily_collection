@@ -8,7 +8,10 @@ class DualMoMixSwiGLU(BaseSwiGLU):
     - 内容上采样 (up_proj):  动态静态并行
     - 降维投影 (down_proj):   动态静态并行
     """
-    def __init__(self, input_dim, output_dim, up_proj_dim, compressed_feature_dim, num_monarchs, **kwargs):
+    def __init__(self, input_dim, output_dim, up_proj_dim,
+                 compressed_feature_dim, num_monarchs,
+                 dropout_rate,
+                 **kwargs):
         """
         Args:
             input_dim (int): 输入维度。
@@ -24,6 +27,7 @@ class DualMoMixSwiGLU(BaseSwiGLU):
             up_proj_dim=up_proj_dim,
             compressed_feature_dim=compressed_feature_dim,
             num_monarchs=num_monarchs,
+            dropout_rate=dropout_rate,
             **kwargs
         )
 
@@ -37,11 +41,12 @@ class DualMoMixSwiGLU(BaseSwiGLU):
         # 从 kwargs 中安全地提取参数
         compressed_feature_dim = kwargs.get('compressed_feature_dim')
         num_monarchs = kwargs.get('num_monarchs')
+        dropout_rate = kwargs.get('dropout_rate')
 
         # 检查必需的参数是否存在
-        if any(p is None for p in [compressed_feature_dim, num_monarchs]):
+        if any(p is None for p in [compressed_feature_dim, num_monarchs, dropout_rate]):
             raise ValueError(
-                "HybridMoMixSwiGLU requires 'compressed_feature_dim' and 'num_monarchs' to be provided in kwargs."
+                "HybridMoMixSwiGLU requires 'compressed_feature_dim' 'num_monarchs' and 'dropout_rate' to be provided in kwargs."
             )
 
         # 1. 混合门控
@@ -50,6 +55,7 @@ class DualMoMixSwiGLU(BaseSwiGLU):
             out_features=up_proj_dim,
             compressed_feature_dim=compressed_feature_dim,
             num_monarchs=num_monarchs,
+            dropout_rate=dropout_rate,
             use_checkpointing=use_checkpointing
         )
 
@@ -59,6 +65,7 @@ class DualMoMixSwiGLU(BaseSwiGLU):
             out_features=up_proj_dim,
             compressed_feature_dim=compressed_feature_dim,
             num_monarchs=num_monarchs,
+            dropout_rate=dropout_rate,
             use_checkpointing=use_checkpointing
         )
 
@@ -71,5 +78,6 @@ class DualMoMixSwiGLU(BaseSwiGLU):
             out_features=output_dim,
             compressed_feature_dim=compressed_feature_dim,
             num_monarchs=num_monarchs,
+            dropout_rate=dropout_rate,
             use_checkpointing=use_checkpointing
         )

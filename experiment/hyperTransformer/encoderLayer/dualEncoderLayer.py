@@ -36,11 +36,12 @@ class DualEncoderLayer(BaseEncoderLayer):
         d_ff = kwargs.get('d_ff')
         num_monarchs = kwargs.get('num_monarchs')
         compressed_feature_dim = kwargs.get('compressed_feature_dim')
+        dropout_rate = kwargs.get('dropout_rate')
 
         # 检查必需的参数是否存在
-        if any(p is None for p in [num_heads, d_ff, num_monarchs, compressed_feature_dim]):
+        if any(p is None for p in [num_heads, d_ff, num_monarchs, compressed_feature_dim, dropout_rate]):
             raise ValueError(
-                "HybridEncoderLayer requires 'num_heads', 'd_ff', 'compressed_feature_dim', and 'num_monarchs' to be provided in kwargs."
+                "HybridEncoderLayer requires 'num_heads', 'd_ff', 'compressed_feature_dim', 'num_monarchs', 'dropout_rate' to be provided in kwargs."
             )
 
         # 从kwargs中获取use_checkpointing标志，默认为False
@@ -52,6 +53,7 @@ class DualEncoderLayer(BaseEncoderLayer):
             num_heads=num_heads,
             compressed_feature_dim=compressed_feature_dim,
             num_monarchs=num_monarchs,
+            dropout_rate=dropout_rate,
             use_checkpointing=use_checkpointing
         )
 
@@ -62,5 +64,6 @@ class DualEncoderLayer(BaseEncoderLayer):
             up_proj_dim=d_ff,
             compressed_feature_dim=compressed_feature_dim,
             num_monarchs=num_monarchs,
+            dropout_rate=dropout_rate,
             use_checkpointing=use_checkpointing
         )

@@ -13,12 +13,15 @@ class DualSelfAttention(BaseSelfAttention):
     def _init_projections(self, compressed_feature_dim, num_monarchs, **kwargs):
         # 从kwargs中获取use_checkpointing标志，默认为False
         use_checkpointing = kwargs.get('use_checkpointing', False)
+        dropout_rate = kwargs.get('dropout_rate')
+        assert dropout_rate is not None, "DualSelfAttention's dropout_rate can not be None"
         # 实现父类的抽象方法，定义自己的投影层
         self.q_proj = DualMoMixLinear(
             in_features=self.d_model,
             out_features=self.d_model,
             compressed_feature_dim=compressed_feature_dim,
             num_monarchs=num_monarchs,
+            dropout_rate=dropout_rate,
             use_checkpointing=use_checkpointing
         )
         self.k_proj = DualMoMixLinear(
@@ -26,6 +29,7 @@ class DualSelfAttention(BaseSelfAttention):
             out_features=self.d_model,
             compressed_feature_dim=compressed_feature_dim,
             num_monarchs=num_monarchs,
+            dropout_rate=dropout_rate,
             use_checkpointing=use_checkpointing
         )
         self.v_proj = DualMoMixLinear(
@@ -33,5 +37,6 @@ class DualSelfAttention(BaseSelfAttention):
             out_features=self.d_model,
             compressed_feature_dim=compressed_feature_dim,
             num_monarchs=num_monarchs,
+            dropout_rate=dropout_rate,
             use_checkpointing=use_checkpointing
         )

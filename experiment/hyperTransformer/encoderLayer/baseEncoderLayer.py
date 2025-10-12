@@ -40,7 +40,7 @@ class BaseEncoderLayer(nn.Module, ABC):
         self.ffn = None
 
         # 3. 调用抽象方法，强制子类实现子模块的初始化
-        self._init_sublayers(d_model=d_model, **kwargs)
+        self._init_sublayers(d_model=d_model, dropout_rate=dropout_rate, **kwargs)
 
         # 4. 确保子类已经正确初始化了子模块
         assert self.attention is not None, "self.attention must be initialized in _init_sublayers"

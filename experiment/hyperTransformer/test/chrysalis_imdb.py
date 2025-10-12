@@ -201,10 +201,11 @@ if __name__ == '__main__':
         'num_monarchs': 2,
         'max_seq_len': 512,
         'num_classes': 2,
-        'dropout_rate': 0.0,
-        'use_checkpointing': True
+        'dropout_rate': 0.05,
+        'use_checkpointing': False
     }
-    accumulation_steps = 4
+    accumulation_steps = 8
+    batch_size = 4
 
     # --- 学习率配置 ---
     main_lr = 1e-4  # 主干网络学习率
@@ -223,7 +224,6 @@ if __name__ == '__main__':
     train_dataset = IMDbDataset(train_data, tokenizer, config['max_seq_len'])
     test_dataset = IMDbDataset(test_data, tokenizer, config['max_seq_len'])
 
-    batch_size = 16
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=batch_size)
 
@@ -268,11 +268,10 @@ if __name__ == '__main__':
 
     criterion = nn.CrossEntropyLoss()
 
-    # --- 关键改动：为两个优化器创建学习率调度器 ---
-    num_epochs = 10
+    num_epochs = 300
     steps_per_epoch = math.ceil(len(train_loader) / accumulation_steps)
     num_training_steps = num_epochs * steps_per_epoch
-    num_warmup_steps = int(0.1 * num_training_steps)
+    num_warmup_steps = int(0.005 * num_training_steps)
 
     main_scheduler = get_linear_schedule_with_warmup(main_optimizer, num_warmup_steps, num_training_steps)
     hyper_scheduler = get_linear_schedule_with_warmup(hyper_optimizer, num_warmup_steps, num_training_steps)

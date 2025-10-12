@@ -11,6 +11,7 @@ class DualMoMixLinear(nn.Module):
                  compressed_feature_dim,
                  num_monarchs,
                  reg_strength=1e-2,
+                 dropout_rate=0.1,
                  use_checkpointing:bool=False
                  ):
         super().__init__()
@@ -26,6 +27,8 @@ class DualMoMixLinear(nn.Module):
 
         self.compressor = nn.Linear(2*out_features, out_features)
 
+        self.dropout = nn.Dropout(dropout_rate)
+
     def forward(self, x):
         x_dynamic = self.dynamic(x)
         x_static = self.static(x)
@@ -33,7 +36,8 @@ class DualMoMixLinear(nn.Module):
         # 1. 在最后一个维度（特征维度）上拼接两个路径的输出
         # 形状: [batch_size, seq_len, out_features] + [batch_size, seq_len, out_features]
         # -> [batch_size, seq_len, 2 * out_features]
-        combined_output = torch.cat([x_static, x_dynamic], dim=-1)
+        # 使用dropout强迫两个模块都学习，两个模块的信息需要组合
+        combined_output = self.dropout(torch.cat([x_static, x_dynamic], dim=-1))
 
         # 2. 使用静态的线性层（compressor）将拼接后的特征降维回原始维度
         # 形状: [batch_size, seq_len, 2 * out_features] -> [batch_size, seq_len, out_features]
