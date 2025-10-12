@@ -44,7 +44,7 @@ class DualMoMixSwiGLU(BaseSwiGLU):
                 "HybridMoMixSwiGLU requires 'compressed_feature_dim' and 'num_monarchs' to be provided in kwargs."
             )
 
-        # 1. 静态门控 (Static Gate)
+        # 1. 混合门控
         self.gate_proj = DualMoMixLinear(
             in_features=input_dim,
             out_features=up_proj_dim,
@@ -53,7 +53,7 @@ class DualMoMixSwiGLU(BaseSwiGLU):
             use_checkpointing=use_checkpointing
         )
 
-        # 2. 动态内容 (Dynamic Content)
+        # 2. 混合内容
         self.up_proj = DualMoMixLinear(
             in_features=input_dim,
             out_features=up_proj_dim,
@@ -65,7 +65,7 @@ class DualMoMixSwiGLU(BaseSwiGLU):
         down_proj_compressed_feature_dim = up_proj_dim//(input_dim//compressed_feature_dim)
         assert down_proj_compressed_feature_dim > 0, "DualMoMixSwiGLU 的 down_proj_compressed_feature_dim 自动计算出错"
 
-        # 3. 静态降维 (Static Down-projection)
+        # 3. 混合降维
         self.down_proj = DualMoMixLinear(
             in_features=up_proj_dim,
             out_features=output_dim,
