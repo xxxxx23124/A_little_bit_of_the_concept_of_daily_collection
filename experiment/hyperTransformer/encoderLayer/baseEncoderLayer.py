@@ -60,7 +60,7 @@ class BaseEncoderLayer(nn.Module, ABC):
     def forward(self,
                 x,
                 rotary_emb: RotaryEmbedding | None = None,
-                padding_mask: Tensor | None = None
+                attention_mask: Tensor | None = None
                 ):
         """
         通用的前向传播逻辑，遵循 Pre-Norm 结构。
@@ -68,7 +68,7 @@ class BaseEncoderLayer(nn.Module, ABC):
         Args:
             x (torch.Tensor): 输入张量，形状为 (batch_size, seq_len, d_model)。
             rotary_emb(RotaryEmbedding): 旋转编码
-            padding_mask(torch.Tensor): 掩码
+            attention_mask(torch.Tensor): 掩码
 
 
         Returns:
@@ -87,7 +87,7 @@ class BaseEncoderLayer(nn.Module, ABC):
             attention_output = checkpoint(
                 self.attention,
                 x=x_norm1,
-                attention_mask=padding_mask,
+                attention_mask=attention_mask,
                 rotary_emb=rotary_emb,
                 use_reentrant=False
             )
@@ -95,7 +95,7 @@ class BaseEncoderLayer(nn.Module, ABC):
             # 不使用 checkpoint（例如在推理时）
             attention_output = self.attention(
                 x=x_norm1,
-                attention_mask=padding_mask,
+                attention_mask=attention_mask,
                 rotary_emb=rotary_emb
             )
 

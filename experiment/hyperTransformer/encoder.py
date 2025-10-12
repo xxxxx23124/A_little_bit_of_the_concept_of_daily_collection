@@ -69,7 +69,7 @@ class Encoder(nn.Module):
     def forward(self,
                 x: torch.Tensor,
                 rotary_emb: RotaryEmbedding | None,
-                padding_mask: Tensor | None = None) -> torch.Tensor:
+                attention_mask: Tensor | None = None) -> torch.Tensor:
         """
         编码器堆栈的前向传播。
 
@@ -82,7 +82,7 @@ class Encoder(nn.Module):
                 旋转位置编码模块。这个对象将被原封不动地传递给堆栈中的
                 每一个层，由层内部的注意力模块决定如何使用它。
 
-            padding_mask (Tensor | None): padding 掩码
+            attention_mask (Tensor | None): padding 掩码
 
         Returns:
             torch.Tensor:
@@ -98,7 +98,7 @@ class Encoder(nn.Module):
                     layer,
                     x=x,
                     rotary_emb=rotary_emb,
-                    padding_mask=padding_mask,
+                    attention_mask=attention_mask,
                     use_reentrant=False
                 )
             else:
@@ -106,7 +106,7 @@ class Encoder(nn.Module):
                 x = layer(
                     x=x,
                     rotary_emb=rotary_emb,
-                    padding_mask=padding_mask
+                    attention_mask=attention_mask
                 )
 
         # --- 2. 应用最终归一化 ---

@@ -202,9 +202,9 @@ if __name__ == '__main__':
         'max_seq_len': 512,
         'num_classes': 2,
         'dropout_rate': 0.0,
-        'use_checkpointing': False
+        'use_checkpointing': True
     }
-    accumulation_steps = 2
+    accumulation_steps = 4
 
     # --- 学习率配置 ---
     main_lr = 1e-4  # 主干网络学习率

@@ -4,6 +4,8 @@ import math
 
 from experiment.hyperTransformer.encoderLayer.hybridEncoderLayer import HybridEncoderLayer
 from experiment.hyperTransformer.encoderLayer.halfHybridEncoderLayer import HalfHybridEncoderLayer
+from experiment.hyperTransformer.encoderLayer.dualEncoderLayer import DualEncoderLayer
+from experiment.hyperTransformer.encoderLayer.halfDualEncoderLayer import HalfDualEncoderLayer
 from experiment.hyperTransformer.encoder import Encoder
 from experiment.hyperTransformer.rotaryEmbedding import RotaryEmbedding
 
@@ -70,8 +72,8 @@ class ChrysalisTransformer(nn.Module):
         # --- 2. 主干：Chrysalis Encoder ---
         # 定义我们的特殊“配方”
         # 第一层是 HalfHybridEncoderLayer，其余层是 HybridEncoderLayer
-        layer_recipe = [HalfHybridEncoderLayer] + [HybridEncoderLayer] * (num_layers - 1)
-
+        # layer_recipe = [HalfHybridEncoderLayer] + [HybridEncoderLayer] * (num_layers - 1)
+        layer_recipe = [HalfDualEncoderLayer] + [DualEncoderLayer] * (num_layers - 1)
         # 创建Encoder实例，传入配方和共享的层参数
         self.encoder = Encoder(
             layer_recipe=layer_recipe,
@@ -102,7 +104,7 @@ class ChrysalisTransformer(nn.Module):
         Args:
             input_ids (Tensor): 输入的token ID，形状 (batch_size, seq_len)。
             attention_mask (Tensor, optional):
-                Padding Mask。形状 (batch_size, seq_len)。
+                attention mask。形状 (batch_size, seq_len)。
                 值为1表示token有效，值为0表示是padding。
 
         Returns:
@@ -127,7 +129,7 @@ class ChrysalisTransformer(nn.Module):
         encoder_output = self.encoder(
             x,
             rotary_emb=self.rotary_emb,
-            padding_mask=attn_mask_for_pytorch
+            attention_mask=attn_mask_for_pytorch
         )
 
         # 4. 池化 (Pooling)

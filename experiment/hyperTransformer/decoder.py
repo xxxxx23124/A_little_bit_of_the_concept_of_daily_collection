@@ -59,7 +59,7 @@ class Decoder(nn.Module):
                 context: torch.Tensor,
                 rotary_emb: RotaryEmbedding | None,
                 all_kv_caches: list[tuple[KVCache, KVCache]] | None = None,
-                padding_mask: torch.Tensor | None = None
+                attention_mask: torch.Tensor | None = None
                 ) -> torch.Tensor:
         """
         解码器堆栈的前向传播。
@@ -96,7 +96,7 @@ class Decoder(nn.Module):
                     rotary_emb=rotary_emb,
                     self_attn_kv_cache=layer_kv_caches[0],
                     cross_attn_kv_cache=layer_kv_caches[1],
-                    padding_mask=padding_mask,
+                    attention_mask=attention_mask,
                     use_reentrant=False
                 )
             else:
@@ -107,7 +107,7 @@ class Decoder(nn.Module):
                     rotary_emb=rotary_emb,
                     self_attn_kv_cache=layer_kv_caches[0],
                     cross_attn_kv_cache=layer_kv_caches[1],
-                    padding_mask=padding_mask
+                    attention_mask=attention_mask
                 )
 
         # --- 2. 应用最终归一化 ---
