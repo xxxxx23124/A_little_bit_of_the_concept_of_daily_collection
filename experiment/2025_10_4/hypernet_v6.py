@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from einops import rearrange
-from experiment.hyperTransformer.rmsNorm import RMSNorm
+from experiment.Transformer.rmsNorm import RMSNorm
 
 class LoRAHyperGenerator(nn.Module):
     """为MainNet的单层生成权重的超网络"""

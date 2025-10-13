@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from experiment.hyperTransformer.linear.hyperMoMixLinear import HyperMoMixLinear
+from experiment.Transformer.linear.hyperMoMixLinear import HyperMoMixLinear
 
 class HybridSwiGLU(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dim, dynamic_dim):
