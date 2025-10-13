@@ -6,6 +6,7 @@ from experiment.hyperTransformer.encoderLayer.hybridEncoderLayer import HybridEn
 from experiment.hyperTransformer.encoderLayer.halfHybridEncoderLayer import HalfHybridEncoderLayer
 from experiment.hyperTransformer.encoderLayer.dualEncoderLayer import DualEncoderLayer
 from experiment.hyperTransformer.encoderLayer.halfDualEncoderLayer import HalfDualEncoderLayer
+from experiment.hyperTransformer.encoderLayer.halfHyperEncoderLayer import HalfHyperEncoderLayer
 from experiment.hyperTransformer.encoder import Encoder
 from experiment.hyperTransformer.rotaryEmbedding import RotaryEmbedding
 
@@ -73,7 +74,10 @@ class ChrysalisTransformer(nn.Module):
         # 定义我们的特殊“配方”
         # 第一层是 HalfHybridEncoderLayer，其余层是 HybridEncoderLayer
         # layer_recipe = [HalfHybridEncoderLayer] + [HybridEncoderLayer] * (num_layers - 1)
-        layer_recipe = [HalfDualEncoderLayer] + [DualEncoderLayer] * (num_layers - 1)
+        # layer_recipe = [HalfDualEncoderLayer] + [DualEncoderLayer] * (num_layers - 1)
+        # layer_recipe = [HalfHybridEncoderLayer] * num_layers
+        # layer_recipe = [HalfDualEncoderLayer] * num_layers
+        layer_recipe = [HalfHyperEncoderLayer] * num_layers
         # 创建Encoder实例，传入配方和共享的层参数
         self.encoder = Encoder(
             layer_recipe=layer_recipe,

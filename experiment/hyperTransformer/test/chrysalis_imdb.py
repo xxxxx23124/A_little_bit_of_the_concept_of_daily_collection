@@ -96,7 +96,9 @@ def train(model, train_loader, optimizers, schedulers, criterion, device,
     main_optimizer.zero_grad()
     hyper_optimizer.zero_grad()
 
-    for batch_idx, batch in enumerate(tqdm(train_loader, desc="Training")):
+    pbar = tqdm(train_loader, desc="Training")
+
+    for batch_idx, batch in enumerate(pbar):
         input_ids = batch['input_ids'].to(device)
         attention_mask = batch['attention_mask'].to(device)
         labels = batch['label'].to(device)
@@ -142,15 +144,13 @@ def train(model, train_loader, optimizers, schedulers, criterion, device,
             main_optimizer.zero_grad()
             hyper_optimizer.zero_grad()
 
-        # 动态输出
-        if (batch_idx + 1) % 100 == 0:
-            running_loss = total_loss / (batch_idx + 1)
-            running_acc = correct / total
-            # 打印两个优化器的学习率
-            print(f"Batch {batch_idx + 1}/{len(train_loader)} | "
-                  f"Loss: {running_loss:.6f} | Acc: {running_acc:.4f} | "
-                  f"Main LR: {main_scheduler.get_last_lr()[0]:.8f} | "
-                  f"Hyper LR: {hyper_scheduler.get_last_lr()[0]:.8f}")
+        # 使用 set_postfix 更新进度条后缀
+        pbar.set_postfix({
+            'Loss': f'{loss.item():.6f}',
+            'Acc': f'{(predicted == labels).sum().item() / labels.size(0):.4f}',
+            'Main LR': f'{main_scheduler.get_last_lr()[0]:.8f}',
+            'Hyper LR': f'{hyper_scheduler.get_last_lr()[0]:.8f}'
+        })
 
     # 处理 epoch 结束时剩余的未更新的梯度
     if len(train_loader) % accumulation_steps != 0:
@@ -166,6 +166,7 @@ def train(model, train_loader, optimizers, schedulers, criterion, device,
         main_optimizer.zero_grad()
         hyper_optimizer.zero_grad()
 
+    pbar.close()  # 显式关闭进度条
     avg_loss = total_loss / len(train_loader)
     avg_acc = correct / total
     return avg_loss, avg_acc
@@ -195,21 +196,21 @@ if __name__ == '__main__':
         'vocab_size': 20000,
         'num_layers': 4,
         'd_model': 256,
-        'num_heads': 4,
+        'num_heads': 8,
         'd_ff': 1024,
         'compressed_feature_dim': 32,
         'num_monarchs': 2,
         'max_seq_len': 512,
         'num_classes': 2,
-        'dropout_rate': 0.05,
-        'use_checkpointing': False
+        'dropout_rate': 0.1,
+        'use_checkpointing': True
     }
-    accumulation_steps = 8
-    batch_size = 4
+    accumulation_steps = 2
+    batch_size = 16
 
     # --- 学习率配置 ---
     main_lr = 1e-4  # 主干网络学习率
-    hyper_lr = 1e-4  # 超网络学习率
+    hyper_lr = 1e-5  # 超网络学习率
 
     print("加载IMDb数据集...")
     dataset = load_dataset("imdb")
@@ -268,10 +269,10 @@ if __name__ == '__main__':
 
     criterion = nn.CrossEntropyLoss()
 
-    num_epochs = 300
+    num_epochs = 10
     steps_per_epoch = math.ceil(len(train_loader) / accumulation_steps)
     num_training_steps = num_epochs * steps_per_epoch
-    num_warmup_steps = int(0.005 * num_training_steps)
+    num_warmup_steps = int(0.1 * num_training_steps)
 
     main_scheduler = get_linear_schedule_with_warmup(main_optimizer, num_warmup_steps, num_training_steps)
     hyper_scheduler = get_linear_schedule_with_warmup(hyper_optimizer, num_warmup_steps, num_training_steps)
