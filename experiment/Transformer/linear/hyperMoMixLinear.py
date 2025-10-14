@@ -75,6 +75,69 @@ class HyperMoMixLinear(nn.Module):
         self.use_checkpointing = use_checkpointing
         self.module_name = f"{self.__class__.__name__}_{hex(id(self))}"
 
+        # 在构造函数的末尾调用自定义的初始化方法
+        self._init_weights()
+
+    def _init_weights(self):
+        """
+        应用特殊的偏置初始化策略，以确保超网络在训练开始时
+        能够生成一个表现良好的主网络权重。
+        """
+        print(f"Applying special bias initialization for {self.module_name}...")
+
+        # --- 步骤 1: 为 M1 和 M2 生成一个理想的“目标”初始权重 ---
+        # 这个权重应该符合主网络操作（Monarch矩阵乘法）的Kaiming初始化
+
+        # 对于 M1，它的作用类似于一个 (n_in*n_out, n_in*n_in) 的矩阵，所以 in_features 是 n_in*n_in
+        target_M1 = torch.empty(self.n_in, self.n_in, self.n_out)
+        nn.init.kaiming_uniform_(target_M1, a=math.sqrt(5))
+        target_M1_flat = rearrange(target_M1, 'g i o -> (g i o)')
+
+        # 对于 M2，它的作用类似于一个 (n_out*n_out, n_in*n_out) 的矩阵，所以 in_features 是 n_in*n_out
+        target_M2 = torch.empty(self.n_out, self.n_in, self.n_out)
+        nn.init.kaiming_uniform_(target_M2, a=math.sqrt(5))
+        target_M2_flat = rearrange(target_M2, 'g i o -> (g i o)')
+
+        # --- 步骤 2: 初始化权重生成器 (M1_gens 和 M2_gens) ---
+        # 目标：让每个生成器在输入为0时，都输出目标权重（这里将目标权重储存在bias里）
+        for gen_list, target_flat in zip([self.M1_gens, self.M2_gens], [target_M1_flat, target_M2_flat]):
+            for expert_gen in gen_list:
+                # 将所有层的权重初始化为0
+                for layer in expert_gen:
+                    if isinstance(layer, nn.Linear):
+                        nn.init.zeros_(layer.weight)
+                        # 如果有偏置，也初始化为0 (除了最后一层)
+                        if layer.bias is not None:
+                            nn.init.zeros_(layer.bias)
+
+                # 关键：将最后一层的偏置设置为目标权重
+                # expert_gen[-1] 是这个Sequential中的最后一个Linear层
+                with torch.no_grad():
+                    expert_gen[-1].bias.copy_(target_flat)
+
+        # --- 步骤 3: 初始化混合器 (mixer) ---
+        # 目标：在输入为0时，输出均匀的混合权重 (logits为0)
+        for layer in self.mixer:
+            if isinstance(layer, nn.Linear):
+                nn.init.zeros_(layer.weight)
+                if layer.bias is not None:
+                    nn.init.zeros_(layer.bias)
+
+        # --- 步骤 4: 初始化偏置和缩放生成器 (biasor, ratio_gen) ---
+        # 目标：在输入为0时，生成的偏置为0，缩放为1
+
+        # Biasor: weight和bias都为0，输出即为0
+        nn.init.zeros_(self.biasor.weight)
+        nn.init.zeros_(self.biasor.bias)
+
+        # Ratio_gen: weight为0，bias为1，输出即为1
+        nn.init.zeros_(self.ratio_gen.weight)
+        nn.init.constant_(self.ratio_gen.bias, 1.0)  # 注意这里是1.0
+
+        # Compressor的初始化可以保持默认，因为它在内部，
+        # 只要它的输出在0附近，上述初始化就能工作。
+        # 标准初始化通常能保证这一点。
+
     def forward(self, x):
         # 压缩特征
         # x: (b, ..., in_features) -> (b, ..., compressed_features_dim)

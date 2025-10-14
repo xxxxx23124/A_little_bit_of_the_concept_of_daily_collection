@@ -210,7 +210,7 @@ if __name__ == '__main__':
 
     # --- 学习率配置 ---
     main_lr = 1e-4  # 主干网络学习率
-    hyper_lr = 1e-5  # 超网络学习率
+    hyper_lr = 5e-6  # 超网络学习率
 
     print("加载IMDb数据集...")
     dataset = load_dataset("imdb")
@@ -261,9 +261,9 @@ if __name__ == '__main__':
     print(f"主干参数组数量: {len(main_params)}")
     print(f"超网络参数组数量: {len(hyper_params)}")
 
-    # 2. 创建两个 Adam 优化器
-    main_optimizer = optim.Adam(main_params, lr=main_lr)
-    hyper_optimizer = optim.Adam(hyper_params, lr=hyper_lr)
+    # 2. 创建两个 AdamW 优化器
+    main_optimizer = optim.AdamW(main_params, lr=main_lr)
+    hyper_optimizer = optim.AdamW(hyper_params, lr=hyper_lr)
 
     optimizers = {'main': main_optimizer, 'hyper': hyper_optimizer}
 
