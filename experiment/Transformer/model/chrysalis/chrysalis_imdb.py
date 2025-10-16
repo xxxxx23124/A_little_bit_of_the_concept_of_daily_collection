@@ -7,10 +7,10 @@ from torch.optim.lr_scheduler import LambdaLR
 from tqdm import tqdm
 from datasets import load_dataset
 import math
+from transformers import AutoTokenizer
 
 from experiment.Transformer.model.chrysalis.chrysalisTransformer import ChrysalisTransformer
 from experiment.Transformer.linear.hyperMoMixLinear import HyperMoMixLinear
-from experiment.Transformer.model.BPETokenizer import BPETokenizer
 
 
 class IMDbDataset(Dataset):
@@ -25,11 +25,18 @@ class IMDbDataset(Dataset):
     def __getitem__(self, idx):
         text = self.data[idx]['text']
         label = self.data[idx]['label']
-        input_ids = self.tokenizer.encode(text, self.max_length)
-        attention_mask = [1 if token != self.tokenizer.pad_id else 0 for token in input_ids]
+        # 用 transformers 的 encode_plus
+        encoding = self.tokenizer.encode_plus(
+            text.lower(),  # 保持 lower，如果用 uncased
+            truncation=True,
+            padding='max_length',
+            max_length=self.max_length,
+            return_tensors='pt',
+            add_special_tokens=True  # 自动加 [CLS], [SEP] 等
+        )
         return {
-            'input_ids': torch.tensor(input_ids),
-            'attention_mask': torch.tensor(attention_mask),
+            'input_ids': encoding['input_ids'].squeeze(0),  # 去掉 batch 维
+            'attention_mask': encoding['attention_mask'].squeeze(0),
             'label': torch.tensor(label)
         }
 
@@ -182,10 +189,8 @@ if __name__ == '__main__':
     test_data = dataset['test']
 
     print("构建词汇表...")
-    tokenizer = BPETokenizer(vocab_size=config['vocab_size'])
-    # tokenizer = BPETokenizer.load('imdb_tokenizer.pkl')
-    tokenizer.train([example['text'] for example in train_data])
-    tokenizer.save('imdb_tokenizer.pkl')
+    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")  # 推荐 BERT 的 tokenizer，英文 uncased
+    config['vocab_size'] = tokenizer.vocab_size  # 更新 vocab_size，通常是 30522
 
     train_dataset = IMDbDataset(train_data, tokenizer, config['max_seq_len'])
     test_dataset = IMDbDataset(test_data, tokenizer, config['max_seq_len'])
