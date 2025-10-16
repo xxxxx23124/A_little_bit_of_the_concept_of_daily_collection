@@ -51,7 +51,7 @@ class BaseSelfAttention(nn.Module, ABC):
 
     def forward(self,
                 x: torch.Tensor,
-                attention_mask: torch.Tensor | None = None,
+                self_attention_mask: torch.Tensor | None = None,
                 rotary_emb: RotaryEmbedding | None = None,
                 kv_cache: KVCache | None = None):
         """
@@ -63,7 +63,7 @@ class BaseSelfAttention(nn.Module, ABC):
                 - 训练/编码时, S > 1。
                 - 推理时, S = 1。
 
-            attention_mask (torch.Tensor, optional):
+            self_attention_mask (torch.Tensor, optional):
                 用于屏蔽特定位置的注意力。
                 - 在 Encoder 中，这是 Padding Mask。
                 - 在 Decoder 训练中，这是 Causal + Padding Mask。
@@ -101,48 +101,20 @@ class BaseSelfAttention(nn.Module, ABC):
 
         # 4. 更新并使用 KV 缓存 (仅在推理模式下)
         if is_inference:
-            # 在推理模式下，attention_mask 应为 None，因为 Q 长度为1，天然因果。
-            # 即使有 padding，也应在生成结束时通过特殊 token 处理，而不是通过 mask。
-            assert attention_mask is None, "attention_mask should not be used during autoregressive inference"
+            assert self_attention_mask is None, "self_attention_mask should not be used during autoregressive inference"
 
             kv_cache.update(key, value)
             key, value = kv_cache.get()
 
         # 5. 执行缩放点积注意力
-        # is_causal 标志是一个方便的快捷方式，但它不能与 attention_mask 同时使用。
-        # 当我们需要处理 padding 时，必须自己构建掩码并传入 attention_mask。
-        # 在这里，我们假设外部调用者会正确构建并传入所需的 `attention_mask`。
         attn_output = F.scaled_dot_product_attention(
             query,
             key,
             value,
-            attn_mask=attention_mask,
-            is_causal=False  # 让 attention_mask 完全控制掩码行为
+            attn_mask=self_attention_mask,
+            is_causal=False  # 让 self_attention_mask 完全控制掩码行为
         )
 
         # 6. 整理输出并应用输出投影
         attn_output = rearrange(attn_output, 'b h s d -> b s (h d)')
         return self.out_proj(attn_output)
-
-"""
-
-如何调用它：
-
-Encoder Layer:
-# 在外部创建 padding_mask
-# x 是 (B, S, D), padding_tokens 是 (B, S) 的布尔张量 (True for padding)
-padding_mask = create_padding_mask(padding_tokens) # (B, 1, 1, S)
-output = self_attention(x, attention_mask=padding_mask, rotary_emb=None, kv_cache=None)
-
-Decoder Layer (训练时):
-# 在外部创建组合掩码
-# target 是 (B, S, D), target_padding 是 (B, S)
-combined_mask = create_causal_and_padding_mask(target_padding)
-output = self_attention(x, attention_mask=combined_mask, rotary_emb=rope, kv_cache=None)
-
-Decoder Layer (推理时):
-# x 是当前 token (B, 1, D)
-# kv_cache 是从上层传入的
-output = self_attention(x, attention_mask=None, rotary_emb=rope, kv_cache=kv_cache)
-
-"""

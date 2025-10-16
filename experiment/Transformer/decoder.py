@@ -8,32 +8,11 @@ from experiment.Transformer.kvCache import KVCache
 from experiment.Transformer.decoderLayer.baseDecoderLayer import BaseDecoderLayer
 
 class Decoder(nn.Module):
-    """
-    一个通用的、配置驱动的 Transformer 解码器堆栈。
-
-    类似于通用 Encoder，此类通过接收一个定义了层类型的“配方”来动态构建
-    解码器堆栈。这使得混合不同类型的解码器层（例如，标准层与专门用于
-    特定任务的层）变得非常简单。
-    """
-
     def __init__(self,
                  layer_recipe: list[type[BaseDecoderLayer]],
                  d_model: int,
                  **layer_kwargs
                  ):
-        """
-        Args:
-            layer_recipe (List[Type[BaseDecoderLayer]]):
-                一个类型列表，定义了解码器堆栈中每一层的类。
-                列表的顺序决定了层在堆栈中的顺序。
-
-            d_model (int):
-                模型的维度，这是所有层共享的基本参数。
-
-            **layer_kwargs:
-                一个包含关键字参数的字典，它将被“透传”给 `layer_recipe` 中
-                每一个层的构造函数 (__init__)。
-        """
         super().__init__()
         self.use_checkpointing = layer_kwargs.get('use_checkpointing', False)
         layers = [
@@ -48,27 +27,35 @@ class Decoder(nn.Module):
                 context: torch.Tensor,
                 rotary_emb: RotaryEmbedding | None,
                 all_kv_caches: list[tuple[KVCache, KVCache]] | None = None,
-                attention_mask: torch.Tensor | None = None
+                self_attention_mask: torch.Tensor | None = None,
+                cross_attention_mask: torch.Tensor | None = None
                 ) -> torch.Tensor:
-        """
-        解码器堆栈的前向传播。
 
-        Args:
-            x (torch.Tensor):
-                目标序列的嵌入，形状为 (batch, target_seq_len, d_model)。
-            context (torch.Tensor):
-                编码器的输出，形状为 (batch, source_seq_len, d_model)。
-            rotary_emb (RotaryEmbedding | None):
-                旋转位置编码模块，将传递给每一层。
-            all_kv_caches (List[Tuple[KVCache, KVCache]] | None, optional):
-                一个列表，包含了所有层的KV缓存。
-                `all_kv_caches[i]` 是第 `i` 层的缓存元组 `(self_attn_cache, cross_attn_cache)`。
-                在训练时通常为 None，在自回归推理时使用。Defaults to None.
+        batch_size, tgt_seq_len, _ = x.shape
 
-        Returns:
-            torch.Tensor:
-                解码器的最终输出，形状与输入 x 相同。
-        """
+        # 生成因果掩码：上三角为 True (屏蔽未来 token)
+        causal_mask = torch.triu(
+            torch.ones((tgt_seq_len, tgt_seq_len), device=x.device, dtype=torch.bool),
+            diagonal=1
+        ).unsqueeze(0).unsqueeze(1)  # 形状: (1, 1, tgt_seq_len, tgt_seq_len)
+
+        if self_attention_mask is not None:
+            # 转换 padding mask 为键填充掩码：(batch_size, 1, 1, tgt_seq_len)，True 为 padding 位置
+            key_padding_mask = (self_attention_mask == 0).unsqueeze(1).unsqueeze(1)
+
+            # 扩展键填充掩码到 (batch_size, 1, tgt_seq_len, tgt_seq_len)
+            key_padding_mask = key_padding_mask.expand(batch_size, 1, tgt_seq_len, tgt_seq_len)
+
+            # 结合因果掩码和填充掩码：逻辑或 (任何需要屏蔽的位置都为 True)
+            self_attention_mask = causal_mask | key_padding_mask
+        else:
+            # 无 padding mask，只用因果掩码（广播到 batch_size）
+            self_attention_mask = causal_mask.expand(batch_size, 1, tgt_seq_len, tgt_seq_len)
+
+        if cross_attention_mask is not None:
+            # 假设输入 cross_attention_mask 是 (batch_size, seq_len)，值 0 为 padding
+            # 转换为 PyTorch 注意力掩码：(batch_size, 1, 1, seq_len)，True 为屏蔽位置
+            cross_attention_mask = (cross_attention_mask == 0).unsqueeze(1).unsqueeze(2)
 
         for i, layer in enumerate(self.layers):
             layer_kv_caches = all_kv_caches[i] if all_kv_caches is not None else None
@@ -81,7 +68,8 @@ class Decoder(nn.Module):
                     rotary_emb=rotary_emb,
                     self_attn_kv_cache=layer_kv_caches[0],
                     cross_attn_kv_cache=layer_kv_caches[1],
-                    attention_mask=attention_mask,
+                    self_attention_mask=self_attention_mask,
+                    cross_attention_mask=cross_attention_mask,
                     use_reentrant=False
                 )
             else:
@@ -91,7 +79,8 @@ class Decoder(nn.Module):
                     rotary_emb=rotary_emb,
                     self_attn_kv_cache=layer_kv_caches[0],
                     cross_attn_kv_cache=layer_kv_caches[1],
-                    attention_mask=attention_mask
+                    self_attention_mask=self_attention_mask,
+                    cross_attention_mask=cross_attention_mask
                 )
 
         x = self.norm(x)

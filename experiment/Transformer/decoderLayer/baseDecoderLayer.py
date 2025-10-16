@@ -78,7 +78,8 @@ class BaseDecoderLayer(nn.Module, ABC):
                 rotary_emb: RotaryEmbedding | None,
                 self_attn_kv_cache: KVCache | None,
                 cross_attn_kv_cache: KVCache | None,
-                attention_mask: Tensor | None = None
+                self_attention_mask: Tensor | None = None,
+                cross_attention_mask: Tensor | None = None,
                 ) -> Tensor:
         """
         通用的前向传播逻辑，遵循 Pre-Norm 结构。
@@ -89,11 +90,12 @@ class BaseDecoderLayer(nn.Module, ABC):
             rotary_emb (RotaryEmbedding | None): 旋转位置编码模块。
             self_attn_kv_cache (KVCache | None): 自注意力的KV缓存。
             cross_attn_kv_cache (KVCache | None): 交叉注意力的KV缓存。
-            attention_mask (Tensor | None): padding掩码，将多个不同长度的句子打包在一起。
-
+            self_attention_mask (Tensor | None): padding掩码，将多个不同长度的句子打包在一起+因果掩码。
+            cross_attention_mask (Tensor | None): padding掩码，将多个不同长度的句子打包在一起。
         Returns:
             torch.Tensor: 解码器层的输出，形状与输入 x 相同。
         """
+
         # --- 第一个子层：带因果掩码的自注意力 ---
         residual_1 = x
         x_norm1 = self.norm1(x)
@@ -105,7 +107,7 @@ class BaseDecoderLayer(nn.Module, ABC):
             self_attn_output = checkpoint(
                 self.self_attention,
                 x=x_norm1,
-                attention_mask=attention_mask,
+                self_attention_mask=self_attention_mask,
                 rotary_emb=rotary_emb,
                 kv_cache=self_attn_kv_cache,
                 use_reentrant=False
@@ -114,7 +116,7 @@ class BaseDecoderLayer(nn.Module, ABC):
             # 不使用 checkpoint（例如在推理时）
             self_attn_output = self.self_attention(
                 x=x_norm1,
-                attention_mask=attention_mask,
+                self_attention_mask=self_attention_mask,
                 rotary_emb=rotary_emb,
                 kv_cache=self_attn_kv_cache
             )
@@ -134,6 +136,7 @@ class BaseDecoderLayer(nn.Module, ABC):
                 x=x_norm2,
                 context=context,
                 kv_cache=cross_attn_kv_cache,
+                cross_attention_mask=cross_attention_mask,
                 use_reentrant=False
             )
         else:
@@ -142,6 +145,7 @@ class BaseDecoderLayer(nn.Module, ABC):
                 x=x_norm2,
                 context=context,
                 kv_cache=cross_attn_kv_cache,
+                cross_attention_mask=cross_attention_mask,
             )
 
         x = residual_2 + self.dropout2(cross_attn_output)
