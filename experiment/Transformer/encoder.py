@@ -42,28 +42,14 @@ class Encoder(nn.Module):
         """
         super().__init__()
 
-        # 从kwargs中获取use_checkpointing标志，默认为False
         self.use_checkpointing = layer_kwargs.get('use_checkpointing', False)
 
-        # --- 1. 动态层实例化 ---
-        # 使用列表推导式遍历 `layer_recipe`。
-        # 对于配方中的每一个 `layer_cls` (层类型/类)，我们都调用它的构造函数
-        # 来创建一个实例。`d_model` 和 `layer_kwargs` 被传递给每个构造函数。
-        # 这种模式将层的构建逻辑从 Encoder 类本身转移到了调用它的外部配置中。
         layers = [
             layer_cls(d_model=d_model, **layer_kwargs)
             for layer_cls in layer_recipe
         ]
 
-        # 将创建的层实例列表包装在 `nn.ModuleList` 中。
-        # 这是至关重要的，因为它能确保所有层都被正确注册为 Encoder 模块的
-        # 子模块，从而使 .parameters(), .to(device), .state_dict() 等方法能够
-        # 正常工作。如果使用普通的 Python 列表，这些功能会失效。
         self.layers = nn.ModuleList(layers)
-
-        # --- 2. 最终归一化层 ---
-        # 在所有编码器层之后应用一个最终的归一化层是一种标准实践。
-        # 它可以稳定下一模块（如解码器）的输入，有助于改善训练动态。
         self.norm = RMSNorm(d_model)
 
     def forward(self,
@@ -88,9 +74,7 @@ class Encoder(nn.Module):
             torch.Tensor:
                 编码器的最终输出，形状与输入 x 相同。
         """
-        # --- 1. 顺序通过层堆栈 ---
-        # 简单地遍历 `self.layers` 中的每一个层模块，
-        # 并将上一层的输出作为下一层的输入。
+
         for layer in self.layers:
             if self.training and self.use_checkpointing:
                 # 使用 checkpoint
@@ -102,15 +86,12 @@ class Encoder(nn.Module):
                     use_reentrant=False
                 )
             else:
-                # 不使用 checkpoint（例如在推理时）
                 x = layer(
                     x=x,
                     rotary_emb=rotary_emb,
                     attention_mask=attention_mask
                 )
 
-        # --- 2. 应用最终归一化 ---
-        # 在通过所有层之后，将最终的输出通过归一化层。
         x = self.norm(x)
 
         return x

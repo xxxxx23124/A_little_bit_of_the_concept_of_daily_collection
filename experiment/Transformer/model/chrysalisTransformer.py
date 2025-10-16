@@ -75,9 +75,9 @@ class ChrysalisTransformer(nn.Module):
         # 第一层是 HalfHybridEncoderLayer，其余层是 HybridEncoderLayer
         # layer_recipe = [HalfHybridEncoderLayer] + [HybridEncoderLayer] * (num_layers - 1)
         # layer_recipe = [HalfDualEncoderLayer] + [DualEncoderLayer] * (num_layers - 1)
-        # layer_recipe = [HalfHybridEncoderLayer] * num_layers
+        layer_recipe = [HalfHybridEncoderLayer] * num_layers
         # layer_recipe = [HalfDualEncoderLayer] * num_layers
-        layer_recipe = [HalfHyperEncoderLayer] * num_layers
+        # layer_recipe = [HalfHyperEncoderLayer] * num_layers
         # 创建Encoder实例，传入配方和共享的层参数
         self.encoder = Encoder(
             layer_recipe=layer_recipe,

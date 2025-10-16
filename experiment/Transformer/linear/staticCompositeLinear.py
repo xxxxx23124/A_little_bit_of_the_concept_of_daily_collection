@@ -20,8 +20,7 @@ class StaticCompositeLinear(nn.Module):
     def __init__(self,
                  in_features: int,
                  out_features: int,
-                 num_softExperts: int,
-                 compressed_feature_dim: int,
+                 num_linear: int,
                  reg_strength: float = 1e-2,
                  use_checkpointing: bool = False
                  ):
@@ -30,8 +29,7 @@ class StaticCompositeLinear(nn.Module):
         # --- 基本属性 ---
         self.in_features = in_features
         self.out_features = out_features
-        self.num_softExperts = num_softExperts
-        self.compressed_feature_dim = compressed_feature_dim
+        self.num_linear = num_linear
         self.reg_strength = reg_strength
         self.use_checkpointing = use_checkpointing
         self.auxiliary_losses = []
@@ -40,11 +38,11 @@ class StaticCompositeLinear(nn.Module):
         # --- 核心组件 ---
         # 静态专家组 (Static Experts)
         # 我们将权重和偏置分开存储，以便于融合
-        self.expert_weights = nn.Parameter(torch.empty(num_softExperts, out_features, in_features))
-        self.expert_biases = nn.Parameter(torch.empty(num_softExperts, out_features))
+        self.expert_weights = nn.Parameter(torch.empty(num_linear, out_features, in_features))
+        self.expert_biases = nn.Parameter(torch.empty(num_linear, out_features))
 
         # 动态混合器 (Mixer)
-        self.mixer = nn.Linear(compressed_feature_dim, num_softExperts)
+        self.mixer = nn.Linear(in_features, num_linear)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: (b, ..., in_features)
@@ -98,14 +96,14 @@ class StaticCompositeLinear(nn.Module):
         计算并注册一个“负载均衡损失”，以鼓励所有专家被均匀使用。
         这与稀疏MoE中的负载均衡损失思想一致。
         """
-        if not (self.training and self.num_softExperts > 1 and self.reg_strength > 0):
+        if not (self.training and self.num_linear > 1 and self.reg_strength > 0):
             return
 
         # 使用 .detach() 来确保这个损失只影响 mixer 的参数
-        detached_features = x.detach()
+        detached_x = x.detach()
 
         # 在分离的计算图上重新计算 mixer 的输出
-        logits = self.mixer(detached_features)
+        logits = self.mixer(detached_x)
         coeffs = torch.softmax(logits, dim=-1)
 
         # 将所有非专家维度展平，得到 (N, k) 的形状，N是token总数
@@ -119,7 +117,7 @@ class StaticCompositeLinear(nn.Module):
         avg_expert_gate = avg_expert_prob
 
         # 负载均衡损失是 f_i 和 P_i 的点积，乘以专家数量进行缩放
-        load_balancing_loss = self.num_softExperts * torch.sum(avg_expert_prob * avg_expert_gate)
+        load_balancing_loss = self.num_linear * torch.sum(avg_expert_prob * avg_expert_gate)
 
         self.auxiliary_losses.append(load_balancing_loss * self.reg_strength)
 
@@ -139,8 +137,7 @@ if __name__ == '__main__':
     model = StaticCompositeLinear(
         in_features=d_model,
         out_features=d_ffn,
-        num_softExperts=num_experts,
-        compressed_feature_dim=comp_dim,
+        num_linear=num_experts,
         reg_strength=0.01,
         use_checkpointing=True  # 测试 checkpointing
     )

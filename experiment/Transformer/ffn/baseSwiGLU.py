@@ -46,7 +46,7 @@ class BaseSwiGLU(nn.Module, ABC):
         assert self.down_proj is not None, "self.down_proj must be initialized in _init_sublayers"
 
     @abstractmethod
-    def _init_sublayers(self, input_dim, output_dim, up_proj_dim, **kwargs):
+    def _init_sublayers(self, **kwargs):
         """
         抽象方法，子类必须实现此方法来初始化 self.gate_proj,
         self.up_proj, 和 self.down_proj 模块。

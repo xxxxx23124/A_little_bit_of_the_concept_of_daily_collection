@@ -35,23 +35,12 @@ class Decoder(nn.Module):
                 每一个层的构造函数 (__init__)。
         """
         super().__init__()
-
-        # 从kwargs中获取use_checkpointing标志，默认为False
         self.use_checkpointing = layer_kwargs.get('use_checkpointing', False)
-
-        # --- 1. 动态层实例化 ---
-        # 根据传入的“配方”列表，使用列表推导式创建每一层的实例。
-        # 这种设计将架构的定义与实现分离，提高了代码的灵活性和可维护性。
         layers = [
             layer_cls(d_model=d_model, **layer_kwargs)
             for layer_cls in layer_recipe
         ]
-        # 使用 nn.ModuleList 包装层列表，以确保它们被正确注册。
         self.layers = nn.ModuleList(layers)
-
-        # --- 2. 最终归一化层 ---
-        # 在所有解码器层之后应用归一化，是稳定最终输出层（LM Head）
-        # 输入的标准做法。
         self.norm = RMSNorm(d_model)
 
     def forward(self,
@@ -80,15 +69,11 @@ class Decoder(nn.Module):
             torch.Tensor:
                 解码器的最终输出，形状与输入 x 相同。
         """
-        # --- 1. 顺序通过层堆栈 ---
-        # 遍历 self.layers 中的每一个层，并传递相应的参数。
-        # enumerate 用于获取层索引 i，以便从 all_kv_caches 中获取对应的缓存。
+
         for i, layer in enumerate(self.layers):
-            # 为当前层选择正确的KV缓存。如果 all_kv_caches 为 None，则传递 None。
             layer_kv_caches = all_kv_caches[i] if all_kv_caches is not None else None
 
             if self.training and self.use_checkpointing:
-                # 使用 checkpoint
                 x = checkpoint(
                     layer,
                     x=x,
@@ -100,7 +85,6 @@ class Decoder(nn.Module):
                     use_reentrant=False
                 )
             else:
-                # 不使用 checkpoint（例如在推理时）
                 x = layer(
                     x=x,
                     context=context,
@@ -110,7 +94,6 @@ class Decoder(nn.Module):
                     attention_mask=attention_mask
                 )
 
-        # --- 2. 应用最终归一化 ---
         x = self.norm(x)
 
         return x

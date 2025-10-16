@@ -26,8 +26,4 @@ class RMSNorm(nn.Module):
         Returns:
             Tensor: 归一化后的输出张量。
         """
-
-        # 调用 PyTorch 内置的高效 RMSNorm
-        # F.rms_norm 会处理归一化和乘以 weight 的所有操作
-        # 注意：这里的输入x需要是 float 或 bfloat16 类型
         return F.rms_norm(x, self.weight.shape, self.weight, self.eps)

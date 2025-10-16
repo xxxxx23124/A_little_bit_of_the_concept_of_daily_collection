@@ -32,7 +32,7 @@ class BaseDecoderLayer(nn.Module, ABC):
             **kwargs: 传递给 _init_sublayers 的额外参数。
         """
         super().__init__()
-
+        self.d_model = d_model
         # 从kwargs中获取use_checkpointing标志，默认为False
         self.use_checkpointing = kwargs.get('use_checkpointing', False)
 
@@ -60,7 +60,7 @@ class BaseDecoderLayer(nn.Module, ABC):
         assert self.ffn is not None, "self.ffn must be initialized in _init_sublayers"
 
     @abstractmethod
-    def _init_sublayers(self, d_model, **kwargs):
+    def _init_sublayers(self, **kwargs):
         """
         抽象方法，子类必须实现此方法来初始化 self.self_attention,
         self.cross_attention 和 self.ffn 模块。

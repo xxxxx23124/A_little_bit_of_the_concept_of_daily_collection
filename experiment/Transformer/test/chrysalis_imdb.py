@@ -203,14 +203,14 @@ if __name__ == '__main__':
         'max_seq_len': 512,
         'num_classes': 2,
         'dropout_rate': 0.1,
-        'use_checkpointing': True
+        'use_checkpointing': False
     }
     accumulation_steps = 2
     batch_size = 16
 
     # --- 学习率配置 ---
     main_lr = 1e-4  # 主干网络学习率
-    hyper_lr = 5e-6  # 超网络学习率
+    hyper_lr = 1e-4  # 超网络学习率
 
     print("加载IMDb数据集...")
     dataset = load_dataset("imdb")

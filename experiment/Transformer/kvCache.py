@@ -8,7 +8,6 @@ class KVCache:
     它被设计为在每次生成新 token 时进行高效的更新。
     """
     def __init__(self):
-        # 使用 None 初始化，表示缓存为空
         self.key_cache = None
         self.value_cache = None
 
@@ -20,11 +19,9 @@ class KVCache:
             key_states (torch.Tensor): 当前步骤计算出的 key 张量。
             value_states (torch.Tensor): 当前步骤计算出的 value 张量。
         """
-        # 如果缓存为空，直接将当前状态设为缓存
         if self.key_cache is None or self.value_cache is None:
             self.key_cache = key_states.detach()
             self.value_cache = value_states.detach()
-        # 如果缓存已存在，则在序列长度维度（dim=2）上进行拼接
         else:
             self.key_cache = torch.cat([self.key_cache, key_states.detach()], dim=2)
             self.value_cache = torch.cat([self.value_cache, value_states.detach()], dim=2)
@@ -52,5 +49,4 @@ class KVCache:
         if self.key_cache is None:
             return 0
         # key_cache 的形状是 [batch, n_heads, seq_len, head_dim]
-        # 我们关心的是 seq_len
         return self.key_cache.shape[2]

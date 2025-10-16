@@ -29,7 +29,7 @@ class BaseSelfAttention(nn.Module, ABC):
         self.v_proj = None
 
         # 调用抽象方法，强制子类实现投影层的初始化
-        self._init_projections(**kwargs)
+        self._init_projections(d_model=d_model, num_heads=num_heads, **kwargs)
 
         # 确保子类已经正确初始化了投影层
         assert all(p is not None for p in [self.q_proj, self.k_proj, self.v_proj]), \
