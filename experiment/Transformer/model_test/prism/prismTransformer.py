@@ -22,7 +22,6 @@ class PrismTransformer(nn.Module):
                  num_linears: int = 4,
                  max_seq_len: int = 512,
                  rope_base: int = 10000,
-                 num_classes: int = 2,
                  dropout_rate: float = 0.1,
                  use_checkpointing:bool = False
                  ):

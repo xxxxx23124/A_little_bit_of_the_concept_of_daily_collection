@@ -141,7 +141,3 @@ if __name__ == '__main__':
     assert len(model.auxiliary_losses) == 1
 
     print("\n`StaticCompositeLinear` 类实现成功，并通过了基本测试！")
-
-    # --- 打印模型结构 ---
-    # print("\n--- 模型结构 ---")
-    # print(model)

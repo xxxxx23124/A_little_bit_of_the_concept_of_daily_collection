@@ -216,7 +216,7 @@ if __name__=='__main__':
         with torch.no_grad():
             predicted_static = static_model(X_train)
     except FileNotFoundError:
-        print("Static model not found, skipping comparison.")
+        print("Static model_test not found, skipping comparison.")
         predicted_static = None
 
     with torch.no_grad():

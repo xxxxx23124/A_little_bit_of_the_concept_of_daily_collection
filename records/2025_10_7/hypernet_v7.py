@@ -69,7 +69,7 @@ def train_model(model, X, y, epochs=10000, lr=0.001):
         main_loss = criterion(outputs, y)
         # 递归收集所有子模块的辅助损失
         total_aux_loss = 0
-        # model.modules() 会递归地返回模型中的所有模块 (包括它自己)
+        # model_test.modules() 会递归地返回模型中的所有模块 (包括它自己)
         for module in model.modules():
             # 检查模块是否是我们想要收集损失的类型
             if isinstance(module, HyperMoMixLinear):
@@ -120,7 +120,7 @@ if __name__=='__main__':
         with torch.no_grad():
             predicted_static = static_model(X_train)
     except FileNotFoundError:
-        print("Static model not found, skipping comparison.")
+        print("Static model_test not found, skipping comparison.")
         predicted_static = None
 
     with torch.no_grad():
