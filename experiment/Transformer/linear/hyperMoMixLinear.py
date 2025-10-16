@@ -47,8 +47,6 @@ class HyperMoMixLinear(nn.Module):
         self.M1_gens = nn.ModuleList(
             [
                 nn.Sequential(
-                    nn.Linear(compressed_feature_dim, compressed_feature_dim),
-                    nn.SiLU(),
                     nn.Linear(compressed_feature_dim, self.n_in * self.n_in * self.n_out)
                 ) for _ in range(num_monarchs)
             ]
@@ -56,8 +54,6 @@ class HyperMoMixLinear(nn.Module):
         self.M2_gens = nn.ModuleList(
             [
                 nn.Sequential(
-                    nn.Linear(compressed_feature_dim, compressed_feature_dim),
-                    nn.SiLU(),
                     nn.Linear(compressed_feature_dim, self.n_out * self.n_in * self.n_out)
                 ) for _ in range(num_monarchs)
             ]
@@ -65,10 +61,9 @@ class HyperMoMixLinear(nn.Module):
 
         # 混合器、缩放器和偏置生成器
         self.mixer = nn.Sequential(
-            nn.Linear(compressed_feature_dim, compressed_feature_dim),
-            nn.SiLU(),
             nn.Linear(compressed_feature_dim, num_monarchs)
         )
+
         self.biasor = nn.Linear(compressed_feature_dim, out_features)
         self.ratio_gen = nn.Linear(compressed_feature_dim, 1)
 
