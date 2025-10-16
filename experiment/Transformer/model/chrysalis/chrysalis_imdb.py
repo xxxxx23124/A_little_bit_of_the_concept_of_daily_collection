@@ -4,50 +4,14 @@ import torch.optim as optim
 from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import Dataset, DataLoader
 from torch.optim.lr_scheduler import LambdaLR
-from collections import Counter
-import re
 from tqdm import tqdm
 from datasets import load_dataset
 import math
 
 from experiment.Transformer.model.chrysalis.chrysalisTransformer import ChrysalisTransformer
 from experiment.Transformer.linear.hyperMoMixLinear import HyperMoMixLinear
+from experiment.Transformer.model.BPETokenizer import BPETokenizer
 
-class SimpleTokenizer:
-    def __init__(self, vocab_size=20000, special_tokens=None):
-        self.vocab_size = vocab_size
-        self.special_tokens = special_tokens or ['[PAD]', '[UNK]', '[CLS]']
-        self.pad_token = self.special_tokens[0]
-        self.unk_token = self.special_tokens[1]
-        self.cls_token = self.special_tokens[2]
-        self.word_to_id = {}
-        self.id_to_word = {}
-
-    def build_vocab(self, texts):
-        counter = Counter()
-        for text in texts:
-            words = re.findall(r'\w+', text.lower())
-            counter.update(words)
-        most_common = counter.most_common(self.vocab_size - len(self.special_tokens))
-        vocab = self.special_tokens + [word for word, _ in most_common]
-        self.word_to_id = {word: idx for idx, word in enumerate(vocab)}
-        self.id_to_word = {idx: word for word, idx in self.word_to_id.items()}
-        self.pad_id = self.word_to_id[self.pad_token]
-        self.unk_id = self.word_to_id[self.unk_token]
-        self.cls_id = self.word_to_id[self.cls_token]
-        self.vocab_size = len(self.word_to_id)
-
-    def encode(self, text, max_length=512):
-        words = re.findall(r'\w+', text.lower())
-        tokens = [self.cls_id] + [self.word_to_id.get(word, self.unk_id) for word in words]
-        if len(tokens) > max_length:
-            tokens = tokens[:max_length]
-        padding_length = max_length - len(tokens)
-        tokens += [self.pad_id] * padding_length
-        return tokens
-
-    def get_vocab_size(self):
-        return self.vocab_size
 
 class IMDbDataset(Dataset):
     def __init__(self, data, tokenizer, max_length=512):
@@ -218,9 +182,10 @@ if __name__ == '__main__':
     test_data = dataset['test']
 
     print("构建词汇表...")
-    tokenizer = SimpleTokenizer(vocab_size=config['vocab_size'])
-    tokenizer.build_vocab([example['text'] for example in train_data])
-    config['vocab_size'] = tokenizer.get_vocab_size()
+    tokenizer = BPETokenizer(vocab_size=config['vocab_size'])
+    # tokenizer = BPETokenizer.load('imdb_tokenizer.pkl')
+    tokenizer.train([example['text'] for example in train_data])
+    tokenizer.save('imdb_tokenizer.pkl')
 
     train_dataset = IMDbDataset(train_data, tokenizer, config['max_seq_len'])
     test_dataset = IMDbDataset(test_data, tokenizer, config['max_seq_len'])

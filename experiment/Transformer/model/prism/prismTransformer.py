@@ -4,6 +4,7 @@ import math
 
 from experiment.Transformer.encoderLayer.staticCompositeEncoderLayer import StaticCompositeEncoderLayer
 from experiment.Transformer.encoderLayer.halfStaticCompositeEncoderLayer import HalfStaticCompositeEncoderLayer
+from experiment.Transformer.encoderLayer.staticEncoderLayer import StaticEncoderLayer
 
 from experiment.Transformer.encoder import Encoder
 from experiment.Transformer.rotaryEmbedding import RotaryEmbedding
@@ -62,7 +63,8 @@ class PrismTransformer(nn.Module):
 
         # --- 2. 主干：Chrysalis Encoder ---
         # 定义我们的特殊“配方”
-        layer_recipe = [HalfStaticCompositeEncoderLayer] + [StaticCompositeEncoderLayer] * (num_layers - 1)
+        # layer_recipe = [HalfStaticCompositeEncoderLayer] + [StaticCompositeEncoderLayer] * (num_layers - 1)
+        layer_recipe = [StaticEncoderLayer] * num_layers
         # 创建Encoder实例，传入配方和共享的层参数
         self.encoder = Encoder(
             layer_recipe=layer_recipe,

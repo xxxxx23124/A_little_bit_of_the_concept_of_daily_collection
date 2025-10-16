@@ -4,50 +4,13 @@ import torch.optim as optim
 from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import Dataset, DataLoader
 from torch.optim.lr_scheduler import LambdaLR
-from collections import Counter
-import re
 from tqdm import tqdm
 from datasets import load_dataset
 import math
 
 from experiment.Transformer.model.prism.prismTransformer import PrismTransformer
 from experiment.Transformer.linear.staticCompositeLinear import StaticCompositeLinear
-
-class SimpleTokenizer:
-    def __init__(self, vocab_size=20000, special_tokens=None):
-        self.vocab_size = vocab_size
-        self.special_tokens = special_tokens or ['[PAD]', '[UNK]', '[CLS]']
-        self.pad_token = self.special_tokens[0]
-        self.unk_token = self.special_tokens[1]
-        self.cls_token = self.special_tokens[2]
-        self.word_to_id = {}
-        self.id_to_word = {}
-
-    def build_vocab(self, texts):
-        counter = Counter()
-        for text in texts:
-            words = re.findall(r'\w+', text.lower())
-            counter.update(words)
-        most_common = counter.most_common(self.vocab_size - len(self.special_tokens))
-        vocab = self.special_tokens + [word for word, _ in most_common]
-        self.word_to_id = {word: idx for idx, word in enumerate(vocab)}
-        self.id_to_word = {idx: word for word, idx in self.word_to_id.items()}
-        self.pad_id = self.word_to_id[self.pad_token]
-        self.unk_id = self.word_to_id[self.unk_token]
-        self.cls_id = self.word_to_id[self.cls_token]
-        self.vocab_size = len(self.word_to_id)
-
-    def encode(self, text, max_length=512):
-        words = re.findall(r'\w+', text.lower())
-        tokens = [self.cls_id] + [self.word_to_id.get(word, self.unk_id) for word in words]
-        if len(tokens) > max_length:
-            tokens = tokens[:max_length]
-        padding_length = max_length - len(tokens)
-        tokens += [self.pad_id] * padding_length
-        return tokens
-
-    def get_vocab_size(self):
-        return self.vocab_size
+from experiment.Transformer.model.BPETokenizer import BPETokenizer
 
 class IMDbDataset(Dataset):
     def __init__(self, data, tokenizer, max_length=512):
@@ -124,7 +87,7 @@ def train(model, train_loader, optimizer, scheduler, criterion, device,
         # 使用 set_postfix 更新进度条后缀
         pbar.set_postfix({
             'Loss': f'{loss.item():.6f}',
-            'Acc': f'{(predicted == labels).sum().item() / labels.size(0):.4f}',
+            'Acc': f'{correct / total:.4f}',
             'LR': f'{scheduler.get_last_lr()[0]:.8f}',
         })
 
@@ -161,18 +124,17 @@ def evaluate(model, test_loader, criterion, device):
 if __name__ == '__main__':
     config = {
         'vocab_size': 20000,
-        'num_layers': 6,
+        'num_layers': 4,
         'd_model': 512,
         'num_heads': 8,
         'd_ff': 2048,
-        'num_linears': 3,
+        'num_linears': 2,
         'max_seq_len': 512,
         'num_classes': 2,
-        'dropout_rate': 0.1,
-        'use_checkpointing': False
+        'dropout_rate': 0.2
     }
-    accumulation_steps = 2
-    batch_size = 16
+    accumulation_steps = 1
+    batch_size = 64
 
     # --- 学习率配置 ---
     lr = 1e-4  # 统一学习率
@@ -183,8 +145,11 @@ if __name__ == '__main__':
     test_data = dataset['test']
 
     print("构建词汇表...")
-    tokenizer = SimpleTokenizer(vocab_size=config['vocab_size'])
-    tokenizer.build_vocab([example['text'] for example in train_data])
+    tokenizer = BPETokenizer(vocab_size=config['vocab_size'])
+    # tokenizer = BPETokenizer.load('imdb_tokenizer.pkl')
+    tokenizer.train([example['text'] for example in train_data])
+    tokenizer.save('imdb_tokenizer.pkl')
+
     config['vocab_size'] = tokenizer.get_vocab_size()
 
     train_dataset = IMDbDataset(train_data, tokenizer, config['max_seq_len'])
@@ -206,7 +171,7 @@ if __name__ == '__main__':
 
     criterion = nn.CrossEntropyLoss()
 
-    num_epochs = 10
+    num_epochs = 60
     steps_per_epoch = math.ceil(len(train_loader) / accumulation_steps)
     num_training_steps = num_epochs * steps_per_epoch
     num_warmup_steps = int(0.1 * num_training_steps)
