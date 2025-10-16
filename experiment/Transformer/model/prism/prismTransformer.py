@@ -2,20 +2,13 @@ import torch.nn as nn
 from torch import Tensor
 import math
 
-from experiment.Transformer.encoderLayer.hybridEncoderLayer import HybridEncoderLayer
-from experiment.Transformer.encoderLayer.halfHybridEncoderLayer import HalfHybridEncoderLayer
-from experiment.Transformer.encoderLayer.dualEncoderLayer import DualEncoderLayer
-from experiment.Transformer.encoderLayer.halfDualEncoderLayer import HalfDualEncoderLayer
-from experiment.Transformer.encoderLayer.halfHyperEncoderLayer import HalfHyperEncoderLayer
+from experiment.Transformer.encoderLayer.staticCompositeEncoderLayer import StaticCompositeEncoderLayer
+from experiment.Transformer.encoderLayer.halfStaticCompositeEncoderLayer import HalfStaticCompositeEncoderLayer
+
 from experiment.Transformer.encoder import Encoder
 from experiment.Transformer.rotaryEmbedding import RotaryEmbedding
 
-
-# ==============================================================================
-# The Main Model: ChrysalisTransformer - ForSequenceClassification
-# ==============================================================================
-
-class ChrysalisTransformer(nn.Module):
+class PrismTransformer(nn.Module):
     """
     一个完整的、自包含的、用于序列分类任务的Encoder-Only模型。
     它使用一个“配方驱动”的Chrysalis Encoder作为其主干。
@@ -30,8 +23,7 @@ class ChrysalisTransformer(nn.Module):
                  d_model: int,
                  num_heads: int,
                  d_ff: int,
-                 compressed_feature_dim:int,
-                 num_monarchs: int = 4,
+                 num_linears: int = 4,
                  # --- 位置编码参数 ---
                  max_seq_len: int = 512,
                  rope_base: int = 10000,
@@ -47,8 +39,7 @@ class ChrysalisTransformer(nn.Module):
             d_model (int): 模型的维度 (必须是完全平方数)。
             num_heads (int): 注意力头的数量。
             d_ff (int): FFN的中间层维度 (最好是完全平方数)。
-            compressed_feature_dim(int): 动态生成参数的‘控制信号’的维度。
-            num_monarchs (int): 混合专家模块中的专家数量。
+            num_linears (int): 混合专家模块中的专家数量。
             max_seq_len (int): 模型能处理的最大序列长度。
             rope_base (int): RoPE的基数。
             num_classes (int): 输出分类的数量 (例如, IMDb为2)。
@@ -57,7 +48,6 @@ class ChrysalisTransformer(nn.Module):
         """
         super().__init__()
         assert num_layers > 1, "num_layers must be greater than 1 to use the specified recipe."
-        assert math.isqrt(d_model) ** 2 == d_model, "d_model must be a perfect square for Chrysalis."
 
         # --- 1. 输入层 (Input Layer) ---
         # Token Embedding: 将 token ID 映射为向量
@@ -72,12 +62,7 @@ class ChrysalisTransformer(nn.Module):
 
         # --- 2. 主干：Chrysalis Encoder ---
         # 定义我们的特殊“配方”
-        # 第一层是 HalfHybridEncoderLayer，其余层是 HybridEncoderLayer
-        # layer_recipe = [HalfHybridEncoderLayer] + [HybridEncoderLayer] * (num_layers - 1)
-        # layer_recipe = [HalfDualEncoderLayer] + [DualEncoderLayer] * (num_layers - 1)
-        layer_recipe = [HalfHybridEncoderLayer] * num_layers
-        # layer_recipe = [HalfDualEncoderLayer] * num_layers
-        # layer_recipe = [HalfHyperEncoderLayer] * num_layers
+        layer_recipe = [HalfStaticCompositeEncoderLayer] + [StaticCompositeEncoderLayer] * (num_layers - 1)
         # 创建Encoder实例，传入配方和共享的层参数
         self.encoder = Encoder(
             layer_recipe=layer_recipe,
@@ -86,8 +71,7 @@ class ChrysalisTransformer(nn.Module):
             num_heads=num_heads,
             d_ff=d_ff,
             dropout_rate=dropout_rate,
-            compressed_feature_dim=compressed_feature_dim,
-            num_monarchs=num_monarchs,
+            num_linears=num_linears,
             use_checkpointing=use_checkpointing
         )
 
@@ -155,14 +139,13 @@ if __name__ == '__main__':
         'd_model': 64,  # 8*8
         'num_heads': 4,
         'd_ff': 256,  # 16*16
-        'compressed_feature_dim':32,
-        'num_monarchs': 3,
+        'num_linears': 3,
         'max_seq_len': 512,
         'num_classes': 2,
     }
 
-    print("--- 实例化 ChrysalisTransformer ---")
-    model = ChrysalisTransformer(**config)
+    print("--- 实例化 PrismTransformer ---")
+    model = PrismTransformer(**config)
     print("模型实例化成功！")
 
     # 打印模型结构
